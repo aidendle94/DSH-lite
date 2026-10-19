@@ -38,7 +38,7 @@ The `@deepseek-ai/dsh` npm package is the upstream build and still contains the 
 To run from a repository checkout:
 
 ```sh
-git clone <DSH-lite repository URL> DSH-lite
+git clone https://github.com/aidendle94/DSH-lite.git
 cd DSH-lite
 pnpm install
 pnpm run build

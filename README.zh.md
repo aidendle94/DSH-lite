@@ -42,7 +42,7 @@ DSH-lite（`dsh`）是 [deepseek-ai/deepseek-harness](https://github.com/deepsee
 如需从仓库源码运行：
 
 ```sh
-git clone <DSH-lite repository URL> DSH-lite
+git clone https://github.com/aidendle94/DSH-lite.git
 cd DSH-lite
 pnpm install
 pnpm run build
