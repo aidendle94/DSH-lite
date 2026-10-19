@@ -37,7 +37,6 @@ export interface DesktopElectronBuilderConfig {
   readonly win: {
     readonly forceCodeSigning: boolean
     readonly signtoolOptions: {
-      readonly publisherName: string | undefined
       readonly sign: ((configuration: { path: string, hash: string, isNest: boolean }) => Promise<void>) | undefined
       readonly signingHashAlgorithms: readonly string[]
     }
@@ -55,7 +54,7 @@ export interface DesktopElectronBuilderConfig {
   readonly afterPack: (context: AfterPackContext) => Promise<void>
   readonly afterSign: (context: AfterPackContext) => Promise<void>
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
-  readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null
+  readonly publish: null
 }
 
 /**
@@ -63,8 +62,7 @@ export interface DesktopElectronBuilderConfig {
  * @param env - Packaging environment.
  * @param hostPlatform - Build-host platform used when no explicit target is present.
  * @param hostArch - Build-host architecture used when no explicit target is present.
- * @param preparedRuntime - Verified private qualification runtime; ordinary releases use target-owned resources.
- * @param preparedRuntimeVersion - Version that private runtime declares, which qualification rewrites away from the product version.
+ * @param preparedRuntime - Verified dsh tree to package instead of the target's prepared tree; it must declare the product version.
  * @returns electron-builder configuration.
  */
 export function createElectronBuilderConfig(
@@ -72,7 +70,6 @@ export function createElectronBuilderConfig(
   hostPlatform?: NodeJS.Platform,
   hostArch?: string,
   preparedRuntime?: string,
-  preparedRuntimeVersion?: string,
 ): DesktopElectronBuilderConfig
 
 declare const electronBuilderConfig: DesktopElectronBuilderConfig

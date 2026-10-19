@@ -54,16 +54,18 @@ const INCOMPATIBLE = { name: 'dsh-late', version: '2.0.0', runtimeVersion: '0.1.
 /** The English sentence an incompatibility of {@link INCOMPATIBLE}, optionally renamed, reads as. */
 const incompatibleText = (name = INCOMPATIBLE.name): string => en.reasonIncompatibleVersion
   .replace('{plugin}', `${name}@2.0.0`).replace('{runtime}', '0.1.0').replace('{requirements}', '@deepseek-ai/dsh ^0.2.0, @deepseek-ai/dsh-core ^0.2.0')
-const MIRROR = 'https://registry.npmmirror.com/'
+const MIRROR_HOST = 'registry.mirror.example'
+const MIRROR = `https://${MIRROR_HOST}/`
 const OFFICIAL = 'https://registry.npmjs.org/'
 
-/** The registries the Host asks: pnpm's own first, which names npm's own registry, then the mirror. */
+/** The registries the Host asks: pnpm's own first, which names npm's own registry, then a configured fallback. */
 const REGISTRIES = { registry: null, fallbackRegistries: [MIRROR], resolved: OFFICIAL }
 
 /** pnpm's own registry as the options label it: by npm's own name once read, the neutral default name until then. */
 const OFFICIAL_OPTION = `${en.registryOfficial} registry.npmjs.org`
 const UNREAD_OPTION = `${en.registryDefault} registry.npmjs.org`
-const MIRROR_OPTION = `${en.registryNpmmirror} registry.npmmirror.com`
+/** A registry without a name of its own reads by its host alone. */
+const MIRROR_OPTION = MIRROR_HOST
 
 const IDLE_INSTALL: InstallState = {
   open: false, spec: '', registries: null, registry: { kind: 'offered', registry: null }, registryOpen: false, registryError: false, attempts: null,
@@ -123,7 +125,6 @@ function renderTab(
     toggleRegistryOptions: vi.fn(),
     chooseRegistry: vi.fn(),
     changeRegistry: vi.fn(),
-    useGithubMirror: vi.fn(),
     approveBuildsAndRetry: vi.fn(),
     enableInstalled: vi.fn(),
     clearHighlight: vi.fn(),
@@ -302,7 +303,7 @@ describe('PluginManagerPage', () => {
       },
     })
     expect(screen.queryByRole('button', { name: en.installChangeRegistry })).toBeNull()
-    // No edit to return to after a failure, and no GitHub mirror recovery, which reopens the spec form.
+    // No edit to return to after a failure.
     expect(screen.queryByRole('button', { name: en.installEditAria })).toBeNull()
     set({
       install: {
@@ -312,7 +313,6 @@ describe('PluginManagerPage', () => {
       },
     })
     expect(screen.getByText(en.installFailedTitle)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: en.installUseGithubMirror })).toBeNull()
     // A Git spec checks without a name or version; the confirmed name and version head the card, above the spec.
     expect([...document.querySelectorAll('[data-install-subject] p')].map(line => line.textContent))
       .toEqual(['Alpha', en.installSubjectGit, en.installVersion.replace('{version}', '1.0.0'), 'git+https://github.com/o/r.git#abc'])
@@ -1556,7 +1556,7 @@ describe('PluginManagerPage', () => {
     }
     // A check no registry answered names them all.
     set({ install: { ...IDLE_INSTALL, open: true, spec: 'dsh-x', inputError: { problem: 'network', reason: 'r', registries: [null, MIRROR] } } })
-    expect(screen.getByRole('alert').textContent).toBe(en.installProblemNetworkAll.replace('{registries}', `${en.registryDefault}, ${en.registryNpmmirror}`))
+    expect(screen.getByRole('alert').textContent).toBe(en.installProblemNetworkAll.replace('{registries}', `${en.registryDefault}, ${MIRROR_HOST}`))
     fireEvent.click(screen.getByRole('button', { name: en.close }))
     expect(actions.closeInstall).toHaveBeenCalledTimes(1)
   })
@@ -1781,83 +1781,7 @@ describe('PluginManagerPage', () => {
     expect(screen.getByText(en.installSubjectTarball)).toBeTruthy()
   })
 
-  it.each(['network', 'timeout'] as const)('shows GitHub recovery only after a %s failure and returns to package input', (kind) => {
-    const subject = { spec: 'github:a/b', status: 'accepted', kind: 'git', bundle: null, registry: null, host: 'github.com' } as const
-    const failed: InstallState = {
-      ...IDLE_INSTALL, open: true, spec: subject.spec, registries: REGISTRIES, phase: 'failed', subject,
-      failure: { reason: 'GitHub connection failed', kind, failedAt: 'spec-host' },
-    }
-    const { actions, set, setLanguage } = renderTab({ install: { ...failed, phase: 'idle', failure: null } })
-    expect(screen.queryByText(en.installGithubFailedTitle)).toBeNull()
-    set({ install: failed })
-    const dialog = screen.getByRole('dialog', { name: kind === 'timeout' ? en.installGithubTimeoutTitle : en.installGithubFailedTitle })
-    expect(within(dialog).getByText(en.installGithubFailedDescription)).toBeTruthy()
-    expect(screen.queryByRole('button', { name: en.installRetry })).toBeNull()
-    fireEvent.click(within(dialog).getByRole('button', { name: en.installUseGithubMirror }))
-    expect(actions.useGithubMirror).toHaveBeenCalledOnce()
-    expect(actions.runInstall).not.toHaveBeenCalled()
-    fireEvent.click(within(dialog).getByRole('button', { name: en.cancel }))
-    expect(actions.closeInstall).toHaveBeenCalledOnce()
-    setLanguage(zh)
-    expect(screen.getByRole('dialog', { name: kind === 'timeout' ? '连接 GitHub 超时' : '无法访问 GitHub' })).toBeTruthy()
-    expect(screen.getByText('请尝试其他安装来源。')).toBeTruthy()
-    set({ install: { ...IDLE_INSTALL, open: true, mirrorRecovery: true, registries: REGISTRIES, registry: { kind: 'offered', registry: MIRROR } } })
-    const form = within(screen.getByRole('dialog', { name: zh.installTitle }))
-    expect(form.queryByText(zh.installDescription)).toBeNull()
-    expect(form.queryByRole('textbox', { name: zh.installSpecLabel })).toBeNull()
-    const input = screen.getByRole('textbox', { name: zh.installPackageLabel })
-    expect(input).toHaveProperty('value', '')
-    expect(document.activeElement).toBe(input)
-    expect(screen.getByRole('button', { name: zh.installRun })).toHaveProperty('disabled', true)
-    expect(form.getAllByRole('button')).toEqual([
-      form.getByRole('button', { name: zh.close }),
-      form.getByRole('button', { name: zh.installGuideToggle }),
-      form.getByRole('button', { name: '安装源 中国大陆镜像源' }),
-      form.getByRole('button', { name: zh.installRun }),
-    ])
-  })
-
-  it('offers another way instead of a mirror the failed GitHub install already asked', () => {
-    const subject = { spec: 'github:a/b', status: 'accepted', kind: 'git', bundle: null, registry: null, host: 'github.com' } as const
-    const failed: InstallState = {
-      ...IDLE_INSTALL, open: true, spec: subject.spec, registries: REGISTRIES, registry: { kind: 'offered', registry: MIRROR },
-      phase: 'failed', subject, failure: { reason: 'GitHub connection timed out', kind: 'timeout', failedAt: 'spec-host' },
-    }
-    const { actions, set, setLanguage } = renderTab({ install: failed })
-    // The mirror picked from the options, also while pnpm's own configuration is unread, typed as an address, or named
-    // by pnpm's own configuration.
-    for (const patch of [
-      {},
-      { registries: { ...REGISTRIES, resolved: null } },
-      { registry: { kind: 'custom', url: ' https://registry.npmmirror.com ' } },
-      { registries: { ...REGISTRIES, resolved: MIRROR }, registry: { kind: 'offered', registry: null } },
-    ] as const) {
-      set({ install: { ...failed, ...patch } })
-      const dialog = within(screen.getByRole('dialog', { name: en.installGithubTimeoutTitle }))
-      expect(dialog.getByText(en.installGithubFailedDescription)).toBeTruthy()
-      expect(dialog.getAllByRole('button')).toEqual([
-        dialog.getByRole('button', { name: en.close }),
-        dialog.getByRole('button', { name: en.cancel }),
-        dialog.getByRole('button', { name: en.installTryAnotherWay }),
-      ])
-    }
-    fireEvent.click(screen.getByRole('button', { name: en.installTryAnotherWay }))
-    expect(actions.useGithubMirror).toHaveBeenCalledOnce()
-    expect(actions.runInstall).not.toHaveBeenCalled()
-    // The form it returns to opens the guide to the package-name example.
-    set({ install: { ...IDLE_INSTALL, open: true, mirrorRecovery: true, registries: REGISTRIES, registry: failed.registry } })
-    expect(screen.getByRole('button', { name: en.installGuideHide }).getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByText(en.installGuideIdHint)).toBeTruthy()
-    // A typed address other than the mirror can still switch to it.
-    set({ install: { ...failed, registry: { kind: 'custom', url: 'npm.corp' } } })
-    expect(screen.getByRole('button', { name: en.installUseGithubMirror })).toBeTruthy()
-    setLanguage(zh)
-    set({ install: failed })
-    expect(screen.getByRole('button', { name: '试试其他方式' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '改用国内镜像' })).toBeNull()
-  })
-
-  it('keeps the ordinary failure view for registry errors, other hosts, and unavailable mirrors', () => {
+  it('keeps the ordinary failure view for GitHub connection failures and other spec-host failures', () => {
     const failed: InstallState = {
       ...IDLE_INSTALL, open: true, registries: REGISTRIES, phase: 'failed',
       subject: { spec: 'github:a/b', status: 'accepted', kind: 'git', bundle: null, registry: null, host: 'github.com' },
@@ -1866,6 +1790,7 @@ describe('PluginManagerPage', () => {
     const { set } = renderTab({ install: failed })
     expect(screen.getByRole('button', { name: en.installChangeRegistry })).toBeTruthy()
     for (const patch of [
+      {},
       { subject: { ...failed.subject!, host: 'gitlab.com' } },
       { subject: null },
       { registries: { ...REGISTRIES, fallbackRegistries: [] } },
@@ -1873,7 +1798,6 @@ describe('PluginManagerPage', () => {
       { failure: { reason: 'not found', kind: 'not-found' as const, failedAt: 'spec-host' as const } },
     ]) {
       set({ install: { ...failed, failure: { reason: 'failed', kind: 'network', failedAt: 'spec-host' }, ...patch } })
-      expect(screen.queryByRole('dialog', { name: en.installGithubFailedTitle })).toBeNull()
       expect(screen.getByRole('button', { name: en.installRetry })).toBeTruthy()
     }
   })
@@ -1987,7 +1911,7 @@ describe('PluginManagerPage', () => {
     fireEvent.click(screen.getByRole('radio', { name: MIRROR_OPTION }))
     expect(actions.chooseRegistry).toHaveBeenLastCalledWith({ kind: 'offered', registry: MIRROR })
     set({ install: { ...open, registryOpen: true, registry: { kind: 'offered', registry: MIRROR } } })
-    expect(screen.getByRole('button', { name: `${en.registryToggle} ${en.registryNpmmirror}` })).toBeTruthy()
+    expect(screen.getByRole('button', { name: `${en.registryToggle} ${MIRROR_HOST}` })).toBeTruthy()
     // A typed registry: the radio picks it, the field carries it, and it is asked alone.
     fireEvent.click(screen.getByRole('radio', { name: new RegExp(en.registryCustom) }))
     expect(actions.chooseRegistry).toHaveBeenLastCalledWith({ kind: 'custom', url: '' })
@@ -2018,7 +1942,7 @@ describe('PluginManagerPage', () => {
     expect(screen.getByRole('button', { name: `${en.registryToggle} npm.corp.example` })).toBeTruthy()
     // One that names the mirror reads by the mirror's name, and the mirror the Host offers is not listed twice.
     set({ install: { ...open, registryOpen: true, registries: { ...REGISTRIES, resolved: MIRROR } } })
-    expect(screen.getByRole('button', { name: `${en.registryToggle} ${en.registryNpmmirror}` })).toBeTruthy()
+    expect(screen.getByRole('button', { name: `${en.registryToggle} ${MIRROR_HOST}` })).toBeTruthy()
     const mirrorLabels = screen.getAllByRole('radio').map(radio => radio.parentElement?.textContent)
     expect(mirrorLabels).toEqual([MIRROR_OPTION, en.registryCustom])
     expect(new Set(mirrorLabels).size).toBe(mirrorLabels.length)
@@ -2044,9 +1968,9 @@ describe('PluginManagerPage', () => {
     })
     expect(screen.getByRole('status').textContent).toBe(en.installingTitle)
     expect(screen.getByText(en.installAttempt
-      .replace('{previous}', en.registryDefault).replace('{registry}', en.registryNpmmirror).replace('{index}', '2').replace('{total}', '2'))).toBeTruthy()
+      .replace('{previous}', en.registryDefault).replace('{registry}', MIRROR_HOST).replace('{index}', '2').replace('{total}', '2'))).toBeTruthy()
     expect(screen.getByText(en.installAttemptBadge.replace('{index}', '1').replace('{registry}', en.registryDefault))).toBeTruthy()
-    expect(screen.getByText(en.installAttemptBadge.replace('{index}', '2').replace('{registry}', en.registryNpmmirror))).toBeTruthy()
+    expect(screen.getByText(en.installAttemptBadge.replace('{index}', '2').replace('{registry}', MIRROR_HOST))).toBeTruthy()
     // The first attempt says nothing about a registry before it; a single run carries no badge.
     set({ install: { ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'running', subject, runs: [runs[0] as never], detailsOpen: true, attempts: { registries: [null], total: 2 } } })
     expect(screen.queryByText(en.installAttemptBadge.replace('{index}', '1').replace('{registry}', en.registryDefault))).toBeNull()
@@ -2058,7 +1982,7 @@ describe('PluginManagerPage', () => {
         attempts: { registries: [null, MIRROR], total: 2 }, failure: { reason: 'ERR', kind: 'network', failedAt: 'registry' },
       },
     })
-    expect(screen.getByText(en.installFailureNetworkAll.replace('{registries}', `${en.registryDefault}, ${en.registryNpmmirror}`))).toBeTruthy()
+    expect(screen.getByText(en.installFailureNetworkAll.replace('{registries}', `${en.registryDefault}, ${MIRROR_HOST}`))).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: en.installChangeRegistry }))
     expect(actions.changeRegistry).toHaveBeenCalledTimes(1)
     // One registry that failed reads as the plain network failure; a stale copy on it still offers another registry.

@@ -1,4 +1,4 @@
-/** Isolated response-only bridge for shell-owned update dialogs. */
+/** Isolated response-only bridge for shell-owned dialogs. */
 import { contextBridge, ipcRenderer } from 'electron'
 import { UPDATE_DIALOG_IPC, type UpdateDialogApi, type UpdateDialogView } from './update-dialog.ts'
 

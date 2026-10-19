@@ -34,11 +34,11 @@ const PLUGINS: PluginInfo[] = [
   { entryId: 'include:core' as PluginEntryId, moduleName: '@deepseek-ai/dsh-base', enabled: true, fiberPhase: 'active', readOnlyReason: 'management-required' },
 ]
 
-const MIRROR = 'https://registry.npmmirror.com/'
+const MIRROR = 'https://registry.mirror.example/'
 const OFFICIAL = 'https://registry.npmjs.org/'
 const CORP = 'https://npm.corp.example/'
 
-/** The registries the Host asks: pnpm's own first, which names npm's own registry, then the mirror. */
+/** The registries the Host asks: pnpm's own first, which names npm's own registry, then a configured fallback. */
 const REGISTRIES = { registry: null, fallbackRegistries: [MIRROR], resolved: OFFICIAL }
 
 /** What the check answers for a registry name. */
@@ -77,7 +77,7 @@ const NO_CONFIG: HostObservable<ConfigLedger> = {
 
 const NO_TABS: HostObservable<readonly PluginTab[]> = { getSnapshot: () => [], subscribe: () => () => {} }
 
-function bench(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}, enabled = true) {
+function bench(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}) {
   const inventory = { list: overrides.inventory ?? vi.fn(() => Promise.resolve(ok({ entries: [], managementAvailable: true }))) }
   const plugins = {
     listBundles: vi.fn<() => Promise<ReturnType<typeof ok<BundleInfo[]>> | ReturnType<typeof refused>>>(
@@ -94,12 +94,9 @@ function bench(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}
     setPluginEnabled: vi.fn(() => Promise.resolve(ok(APPLIED))),
     ...overrides,
   }
-  const probe = { fastest: overrides.fastest ?? vi.fn(() => Promise.resolve(ok(null))) }
-  const track = vi.fn()
   const ctx = {
-    get: () => ({ enabled, track }),
     configForms: { describe: () => ({ getSnapshot: () => ({ view: { namespaces: [] } }), subscribe: () => () => {} }), get: vi.fn((id: string) => `form:${id}`) },
-    remote: { pluginManager: plugins, pluginInventory: inventory, pluginRegistryProbe: probe },
+    remote: { pluginManager: plugins, pluginInventory: inventory },
   } as never
   const controller = new PluginManagerController(ctx)
   onTestFinished(() => { controller.dispose() })
@@ -110,7 +107,7 @@ function bench(overrides: Partial<Record<string, ReturnType<typeof vi.fn>>> = {}
     await vi.waitFor(() => { expect(state().install.phase).toBe('starting') })
     return state().install.requestId as PluginInstallRequestId
   }
-  return { plugins, inventory, probe, controller, face, state, started, track }
+  return { plugins, inventory, controller, face, state, started }
 }
 
 it('hands a custom page the shared configuration form of its entry', () => {
@@ -544,7 +541,7 @@ describe('PluginManagerController', () => {
   })
 
   it('always asks before uninstalling, and cancelling runs nothing', async () => {
-    const { plugins, face, state, controller, track } = bench()
+    const { plugins, face, state, controller } = bench()
     await controller.load()
     face.uninstall(BUNDLE.name)
     expect(state().confirm).toEqual({ action: 'uninstall', packageName: BUNDLE.name })
@@ -552,12 +549,10 @@ describe('PluginManagerController', () => {
     expect(state().confirm).toBeNull()
     face.confirm()
     expect(plugins.removeBundle).not.toHaveBeenCalled()
-    expect(track).not.toHaveBeenCalled()
     face.uninstall(BUNDLE.name)
     face.confirm()
     expect(state().confirm).toBeNull()
     await vi.waitFor(() => { expect(plugins.removeBundle).toHaveBeenCalledExactlyOnceWith(BUNDLE.name) })
-    expect(track).toHaveBeenCalledExactlyOnceWith('confirm_uninstall_plugin', { plugin_name: BUNDLE.name })
     await vi.waitFor(() => { expect(state().busy).toEqual([]) })
     // A refused removal names the action it was.
     plugins.removeBundle.mockResolvedValueOnce(ok({ ...failed(), stage: 'remove', error: { code: 'not-removable' } }) as never)
@@ -587,10 +582,9 @@ describe('PluginManagerController', () => {
     const gate = deferred<ReturnType<typeof ok<ChangeResult>>>()
     const installBundle = vi.fn((): Promise<ReturnType<typeof ok<ChangeResult>>> => Promise.resolve(ok({ ...APPLIED, bundle: 'dsh-other' })))
       .mockReturnValueOnce(gate.promise)
-    const { plugins, face, state, controller, started, track } = bench({ installBundle })
+    const { plugins, face, state, controller, started } = bench({ installBundle })
     await controller.load()
     face.installFrom({ spec: 'dsh-new@1.0.0', registry: 'https://r.example/', title: 'New', version: '1.0.0' })
-    expect(track).not.toHaveBeenCalledWith('plugin_add_button_click', {})
     expect(state().install).toMatchObject({ open: true, spec: 'dsh-new@1.0.0', confirmed: { title: 'New', version: '1.0.0' }, registry: { kind: 'custom', url: 'https://r.example/' } })
     await started()
     expect(plugins.inspect).toHaveBeenCalledWith('dsh-new@1.0.0', { registry: 'https://r.example/' }, expect.any(AbortSignal))
@@ -1122,7 +1116,7 @@ describe('PluginManagerController', () => {
     expect(state().highlight).toBeNull()
   })
 
-  it.each([true, false])('offers the scripts a blocked run left pending, and retries with analytics enabled=%s', async (enabled) => {
+  it('offers the scripts a blocked run left pending, and retries', async () => {
     const gates: ReturnType<typeof deferred<Awaited<ReturnType<typeof ok<ChangeResult>> | ReturnType<typeof refused>>>>[] = []
     const { face, state, controller, plugins, started } = bench({
       installBundle: vi.fn(() => {
@@ -1130,7 +1124,7 @@ describe('PluginManagerController', () => {
         gates.push(gate)
         return gate.promise
       }),
-    }, enabled)
+    })
     await controller.load()
     face.openInstall()
     face.editInstallSpec('x')
@@ -1463,7 +1457,7 @@ describe('PluginManagerController', () => {
       removeItem: (key: string) => { storage.delete(key) },
     })
     try {
-      const { plugins, face, state, track } = bench({
+      const { plugins, face, state } = bench({
         inspect: vi.fn(() => Promise.resolve(ok({ ...INSPECTED, registry: 'https://npm.corp.example/' }))),
       })
       face.openInstall()
@@ -1472,9 +1466,6 @@ describe('PluginManagerController', () => {
       face.runInstall()
       expect(state().install).toMatchObject({ phase: 'idle', registryError: true, registryOpen: true })
       expect(plugins.inspect).not.toHaveBeenCalled()
-      expect(track.mock.calls.filter(([event]) => event === 'install_plugin_result')).toEqual([
-        ['install_plugin_result', expect.objectContaining({ input_value: 'dsh-new', is_success: false, error_reason: 'invalid-registry' })],
-      ])
       // Typing again clears the refusal; a URL is asked as typed, trimmed.
       face.chooseRegistry({ kind: 'custom', url: ' https://npm.corp.example ' })
       expect(state().install.registryError).toBe(false)
@@ -1482,9 +1473,6 @@ describe('PluginManagerController', () => {
       expect(plugins.inspect).toHaveBeenCalledWith('dsh-new', { registry: 'https://npm.corp.example' }, expect.any(AbortSignal))
       await vi.waitFor(() => { expect(state().install.phase).toBe('done') })
       expect(plugins.installBundle).toHaveBeenCalledWith('dsh-new', expect.objectContaining({ registry: 'https://npm.corp.example/' }))
-      const results = track.mock.calls.filter(([event]) => event === 'install_plugin_result')
-      expect(results).toHaveLength(2)
-      expect(results[1]).toEqual(['install_plugin_result', expect.objectContaining({ is_success: true, plugin_name: 'dsh-new' })])
       // A dialog opened later, by another controller, starts from the registry last used.
       const later = bench()
       later.face.openInstall()
@@ -1531,78 +1519,9 @@ describe('PluginManagerController', () => {
     expect(state().install).toMatchObject({ phase: 'idle', spec: 'dsh-new', registryOpen: true, runs: [], failure: null })
   })
 
-  it.each(['network', 'timeout'] as const)('recovers a GitHub %s failure without retrying its URL through a mirror', async (kind) => {
-    const spec = 'https://github.com/example/dsh-plugin.git'
-    const inspect = vi.fn().mockResolvedValueOnce(ok({ status: 'accepted', kind: 'git', bundle: null, registry: null, host: 'github.com' }))
-      .mockResolvedValue(ok({ ...INSPECTED, registry: MIRROR }))
-    const { face, state, plugins } = bench({
-      inspect,
-      installBundle: vi.fn().mockResolvedValueOnce(ok({
-        ...failed(undefined, { exitCode: 1, output: 'Could not resolve host: github.com', truncated: false, logPath: '/l', kind }),
-        failedAt: 'spec-host',
-      })).mockResolvedValueOnce(ok({
-        ...failed(undefined, { exitCode: 1, output: 'Registry connection failed', truncated: false, logPath: '/l', kind: 'network' }),
-        failedAt: 'registry',
-      })).mockResolvedValue(ok({ ...APPLIED, bundle: 'dsh-new' })),
-    })
-    face.openInstall()
-    await vi.waitFor(() => { expect(state().install.registries).toEqual(REGISTRIES) })
-    face.editInstallSpec(spec)
-    face.useGithubMirror()
-    expect(state().install.spec).toBe(spec)
-    face.runInstall()
-    await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    face.useGithubMirror()
-    expect(state().install).toMatchObject({
-      phase: 'idle', open: true, spec: '', mirrorRecovery: true, registry: { kind: 'offered', registry: MIRROR },
-      registryOpen: false, failure: null, runs: [],
-    })
-    expect(plugins.installBundle).toHaveBeenCalledTimes(1)
-    face.editInstallSpec('dsh-new')
-    face.runInstall()
-    await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    face.changeRegistry()
-    expect(state().install).toMatchObject({ phase: 'idle', spec: 'dsh-new', mirrorRecovery: true, registryOpen: true })
-    face.runInstall()
-    await vi.waitFor(() => { expect(state().install.phase).toBe('done') })
-    expect(plugins.inspect).toHaveBeenLastCalledWith('dsh-new', { registry: MIRROR }, expect.any(AbortSignal))
-    expect(plugins.installBundle).toHaveBeenLastCalledWith('dsh-new', expect.objectContaining({ registry: MIRROR }))
-    face.closeInstall()
-    face.openInstall()
-    await vi.waitFor(() => { expect(state().install.registries).toEqual(REGISTRIES) })
-    expect(state().install.registry).toEqual({ kind: 'offered', registry: MIRROR })
-  })
-
-  it.each([
-    ['typed as an address', { kind: 'custom', url: 'https://registry.npmmirror.com' }, REGISTRIES],
-    ['named by pnpm\'s own configuration', { kind: 'offered', registry: null }, { ...REGISTRIES, resolved: MIRROR }],
-  ] as const)('clears the GitHub address and keeps the registry when the install already asked the mirror %s', async (_how, choice, registries) => {
-    const { face, state, plugins } = bench({
-      registries: vi.fn(() => Promise.resolve(ok(registries))),
-      inspect: vi.fn(() => Promise.resolve(ok({ status: 'accepted', kind: 'git', bundle: null, registry: MIRROR, host: 'github.com' }))),
-      installBundle: vi.fn(() => Promise.resolve(ok({
-        ...failed(undefined, { exitCode: 1, output: 'Could not resolve host: github.com', truncated: false, logPath: '/l', kind: 'timeout' }),
-        failedAt: 'spec-host',
-      }))),
-    })
-    face.openInstall()
-    await vi.waitFor(() => { expect(state().install.registries).toEqual(registries) })
-    face.chooseRegistry(choice)
-    face.editInstallSpec('https://github.com/example/dsh-plugin.git')
-    face.runInstall()
-    await vi.waitFor(() => { expect(state().install.phase).toBe('failed') })
-    face.useGithubMirror()
-    expect(state().install).toMatchObject({ phase: 'idle', spec: '', mirrorRecovery: true, registry: choice, failure: null })
-    // The choice stays as made, so the next dialog starts from it too.
-    face.closeInstall()
-    face.openInstall()
-    await vi.waitFor(() => { expect(state().install.registries).toEqual(registries) })
-    expect(state().install.registry).toEqual(choice)
-    expect(plugins.installBundle).toHaveBeenCalledTimes(1)
-  })
 })
 
-describe('Host registry response recommendation', () => {
+describe('initial registry read', () => {
   it('inspects the remembered registry when the offered choice becomes custom during the initial read', async () => {
     const key = 'dsh.plugin-manager.install-registry'
     const registry = 'https://old.example/'
@@ -1614,7 +1533,7 @@ describe('Host registry response recommendation', () => {
       removeItem: (name: string) => { storage.delete(name) },
     })
     try {
-      const { face, state, plugins, probe } = bench({
+      const { face, state, plugins } = bench({
         registries: vi.fn(() => registries.promise),
         inspect: vi.fn(async () => ok({ ...INSPECTED, registry })),
       })
@@ -1628,7 +1547,6 @@ describe('Host registry response recommendation', () => {
       expect(plugins.inspect).toHaveBeenCalledWith('dsh-new', { registry }, expect.any(AbortSignal))
       expect(state().install.registry).toEqual({ kind: 'custom', url: registry })
       expect(JSON.parse(storage.get(key)!)).toEqual({ kind: 'custom', url: registry })
-      expect(probe.fastest).not.toHaveBeenCalled()
       await vi.waitFor(() => { expect(state().install.phase).toBe('done') })
       expect(plugins.installBundle).toHaveBeenCalledWith('dsh-new', expect.objectContaining({ registry }))
     } finally {
@@ -1637,198 +1555,17 @@ describe('Host registry response recommendation', () => {
     }
   })
 
-  it('selects the mainland mirror before the first inspection, even when install was clicked during lookup', async () => {
-    const fastest = deferred<ReturnType<typeof ok<string | null>>>()
-    const { face, state, plugins, probe } = bench({ fastest: vi.fn(() => fastest.promise) })
-    face.openInstall()
-    face.editInstallSpec('dsh-new')
-    face.runInstall()
-    await vi.waitFor(() => { expect(probe.fastest).toHaveBeenCalledOnce() })
-    expect(plugins.inspect).not.toHaveBeenCalled()
-    fastest.resolve(ok(MIRROR))
-    await vi.waitFor(() => { expect(plugins.inspect).toHaveBeenCalled() })
-    expect(plugins.inspect).toHaveBeenCalledWith('dsh-new', { registry: MIRROR }, expect.any(AbortSignal))
-    expect(state().install.registry).toEqual({ kind: 'offered', registry: MIRROR })
-  })
-
-  it.each([OFFICIAL, null])('keeps the default for probe result %s', async (winner) => {
-    const { face, state, probe } = bench({ fastest: vi.fn(() => Promise.resolve(ok(winner))) })
-    face.openInstall()
-    await vi.waitFor(() => { expect(probe.fastest).toHaveBeenCalledOnce() })
-    expect(state().install.registry).toEqual({ kind: 'offered', registry: null })
-  })
-
-  it('keeps the default when the Host lookup is unavailable', async () => {
-    const { face, state, probe } = bench({ fastest: vi.fn(() => Promise.resolve(refused('gateway/internal', 'offline'))) })
-    face.openInstall()
-    await vi.waitFor(() => { expect(probe.fastest).toHaveBeenCalledOnce() })
-    expect(state().install.registry).toEqual({ kind: 'offered', registry: null })
-  })
-
-  it.each([
-    { registry: MIRROR, resolved: OFFICIAL, fallbackRegistries: [MIRROR] },
-    { registry: null, resolved: CORP, fallbackRegistries: [MIRROR] },
-    { registry: null, resolved: null, fallbackRegistries: [MIRROR] },
-    { registry: null, resolved: 'invalid', fallbackRegistries: [MIRROR] },
-    { registry: null, resolved: OFFICIAL, fallbackRegistries: [] },
-  ])('does not probe registries for an ineligible registry configuration %j', async (registries) => {
-    const { face, state, probe } = bench({ registries: vi.fn(() => Promise.resolve(ok(registries))) })
-    face.openInstall()
-    await vi.waitFor(() => { expect(state().install.registries).toEqual(registries) })
-    expect(state().install.registry).toEqual({ kind: 'offered', registry: registries.registry })
-    expect(probe.fastest).not.toHaveBeenCalled()
-  })
-
   it('preserves a manual choice made before the registry list arrives', async () => {
     const registries = deferred<ReturnType<typeof ok<typeof REGISTRIES>>>()
-    const { face, state, probe } = bench({ registries: vi.fn(() => registries.promise) })
+    const { face, state } = bench({ registries: vi.fn(() => registries.promise) })
     face.openInstall()
     face.chooseRegistry({ kind: 'custom', url: CORP })
     registries.resolve(ok(REGISTRIES))
     await vi.waitFor(() => { expect(state().install.registries).toEqual(REGISTRIES) })
     expect(state().install.registry).toEqual({ kind: 'custom', url: CORP })
-    expect(probe.fastest).not.toHaveBeenCalled()
   })
 
-  it('does not overwrite a manual choice or wait for registry probing after that choice', async () => {
-    const fastest = deferred<ReturnType<typeof ok<string | null>>>()
-    const { face, state, plugins, probe } = bench({ fastest: vi.fn(() => fastest.promise) })
-    face.openInstall()
-    await vi.waitFor(() => { expect(probe.fastest).toHaveBeenCalledOnce() })
-    face.chooseRegistry({ kind: 'custom', url: CORP })
-    face.editInstallSpec('dsh-new')
-    face.runInstall()
-    await vi.waitFor(() => { expect(plugins.inspect).toHaveBeenCalled() })
-    fastest.resolve(ok(MIRROR))
-    await fastest.promise
-    expect(state().install.registry).toEqual({ kind: 'custom', url: CORP })
-    expect(plugins.inspect).toHaveBeenCalledWith('dsh-new', { registry: CORP }, expect.any(AbortSignal))
-  })
-
-  it.each(['close', 'dispose'] as const)('discards a waiting install after %s', async (action) => {
-    const fastest = deferred<ReturnType<typeof ok<string | null>>>()
-    const { face, controller, plugins, probe } = bench({ fastest: vi.fn(() => fastest.promise) })
-    face.openInstall()
-    face.editInstallSpec('dsh-new')
-    face.runInstall()
-    await vi.waitFor(() => { expect(probe.fastest).toHaveBeenCalledOnce() })
-    if (action === 'close') face.closeInstall()
-    else controller.dispose()
-    fastest.resolve(ok(MIRROR))
-    await fastest.promise
-    await Promise.resolve()
-    expect(plugins.inspect).not.toHaveBeenCalled()
-  })
 })
-
-it('recognizes the official registry without a trailing slash and with uppercase host letters', async () => {
-  const { face, state } = bench({
-    registries: vi.fn(async () => ok({ ...REGISTRIES, resolved: 'https://REGISTRY.NPMJS.ORG' })),
-    fastest: vi.fn(async () => ok(MIRROR)),
-  })
-  face.openInstall()
-  await vi.waitFor(() => { expect(state().install.registry).toEqual({ kind: 'offered', registry: MIRROR }) })
-})
-
-
-describe('desktop analytics outcomes', () => {
-  it('redacts authenticated installer URLs from click and failed-result events', async () => {
-    const b = bench({ inspect: vi.fn(async () => ok({ status: 'refused', problem: 'not-bundle', reason: 'refused' })) })
-    b.face.openInstall()
-    b.face.editInstallSpec('git+https://user:private-token@example.invalid/repo.git?token=private-token')
-    b.face.runInstall()
-    await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('install_plugin_result', expect.objectContaining({ input_value: '[git]' })) })
-    expect(b.track).toHaveBeenCalledWith('plugin_install_click', { input_value: '[git]' })
-    expect(JSON.stringify(b.track.mock.calls)).not.toContain('private-token')
-  })
-
-  it('reports input inspection failure separately from cancellation', async () => {
-    const b = bench({ inspect: vi.fn(async () => ok({ status: 'refused', problem: 'not-bundle', reason: 'not a bundle' })) })
-    b.face.openInstall()
-    b.face.editInstallSpec('dsh-new')
-    b.face.runInstall()
-    await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('install_plugin_result', expect.objectContaining({ input_value: 'dsh-new', is_success: false, error_reason: 'not-bundle', duration: expect.any(Number) as number })) })
-    expect(b.track).toHaveBeenCalledWith('plugin_install_click', { input_value: 'dsh-new' })
-  })
-
-  it('reports unknown only after recovery confirms the result is absent', async () => {
-    const lost = deferred<ReturnType<typeof ok<ChangeResult | null>>>()
-    const b = bench({ installBundle: vi.fn(async () => refused('gateway/internal', 'offline')), waitForInstall: vi.fn(() => lost.promise) })
-    b.face.openInstall()
-    b.face.editInstallSpec('dsh-new')
-    b.face.runInstall()
-    await vi.waitFor(() => { expect(b.plugins.waitForInstall).toHaveBeenCalledTimes(1) })
-    expect(b.track.mock.calls.filter(call => call[0] === 'install_plugin_result')).toEqual([])
-    lost.resolve(ok(null))
-    await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('install_plugin_result', expect.objectContaining({ error_reason: 'unknown_result', is_success: false })) })
-    b.face.reconcileInstall()
-    expect(b.track.mock.calls.filter(call => call[0] === 'install_plugin_result')).toHaveLength(1)
-  })
-
-  it('closing during inspection reports user_cancelled once', async () => {
-    const inspecting = deferred<ReturnType<typeof ok<typeof INSPECTED>>>()
-    const b = bench({ inspect: vi.fn(() => inspecting.promise) })
-    b.face.openInstall()
-    b.face.editInstallSpec('dsh-new')
-    b.face.runInstall()
-    await vi.waitFor(() => { expect(b.plugins.inspect).toHaveBeenCalledTimes(1) })
-    b.face.closeInstall()
-    inspecting.resolve(ok(INSPECTED))
-    await Promise.resolve()
-    const results = b.track.mock.calls.filter(call => call[0] === 'install_plugin_result')
-    expect(results).toHaveLength(1)
-    expect(results[0]?.[1]).toMatchObject({ error_reason: 'user_cancelled', is_success: false })
-    expect(results[0]?.[1]).not.toHaveProperty('result_status')
-    expect(results[0]?.[1]).not.toHaveProperty('plugin_type')
-    expect(b.plugins.installBundle).not.toHaveBeenCalled()
-  })
-
-  it('uses bundle and plugin types only after successful changes', async () => {
-    const b = bench()
-    await b.controller.load()
-    b.face.setEnabled(BUNDLE.name, true)
-    await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('plugin_toggle', { plugin_name: BUNDLE.name, plugin_type: 'bundle', is_enabled: true, is_builtin: false }) })
-    b.face.setRowEnabled(ROW_ENTRY, false)
-    await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('plugin_toggle', { plugin_name: BUNDLE.name, plugin_type: 'plugin', is_enabled: false, is_builtin: false }) })
-    b.plugins.setBundleEnabled.mockResolvedValueOnce(ok({ ...APPLIED, application: 'cancelled' }))
-    b.face.setEnabled(BUNDLE.name, false)
-    await vi.waitFor(() => { expect(b.state().busy).toEqual([]) })
-    expect(b.track.mock.calls.filter(call => call[0] === 'plugin_toggle')).toHaveLength(2)
-  })
-})
-
-
-it('does not retain install identity when analytics is disabled', async () => {
-  const b = bench({}, false)
-  b.face.openInstall()
-  b.face.editInstallSpec('dsh-new')
-  b.face.runInstall()
-  await vi.waitFor(() => { expect(b.state().install.phase).toBe('done') })
-  expect(b.track.mock.calls.filter(([name]) => name === 'plugin_install_click' || name === 'install_plugin_result')).toEqual([])
-})
-
-it('reports restart-required row toggles and tolerates a vanished inventory entry', async () => {
-  const b = bench({ setPluginEnabled: vi.fn(async () => ok({ ...APPLIED, application: 'restart-required' })) })
-  await b.controller.load()
-  b.face.setRowEnabled(ROW_ENTRY, true)
-  await vi.waitFor(() => { expect(b.track).toHaveBeenCalledWith('plugin_toggle', expect.objectContaining({ plugin_type: 'plugin' })) })
-  b.face.setEnabled('vanished-package', true)
-  await vi.waitFor(() => { expect(b.state().busy).toEqual([]) })
-  expect(b.track.mock.calls.filter(([name]) => name === 'plugin_toggle')).toHaveLength(1)
-})
-
-it('reports a successful install with only documented result fields', async () => {
-  const b = bench()
-  b.face.openInstall()
-  b.face.editInstallSpec('dsh-new')
-  b.face.runInstall()
-  await vi.waitFor(() => { expect(b.state().install.phase).toBe('done') })
-  const results = b.track.mock.calls.filter(([name]) => name === 'install_plugin_result')
-  expect(results).toEqual([['install_plugin_result', {
-    input_value: 'dsh-new', is_success: true, duration: expect.any(Number) as number, plugin_name: 'dsh-new',
-  }]])
-})
-
 
 const CATALOG: BundleInfo = {
   name: '@deepseek-ai/dsh-subagent-codex', official: true, availability: 'missing', installed: false, optional: false,
@@ -1848,14 +1585,14 @@ it('installs an absent Official entry directly at the host target and enables it
   expect(state().install.subject).toMatchObject({ selection: true, saveExact: true, version: '2.0.0' })
 })
 
-it.each(['before', 'after'] as const)('reports one Official toggle when inventory refresh finishes %s installation', async (order) => {
+it.each(['before', 'after'] as const)('completes an Official installation when inventory refresh finishes %s it', async (order) => {
   const installing = deferred<ReturnType<typeof ok<ChangeResult>>>()
   const refreshing = deferred<ReturnType<typeof ok<BundleInfo[]>>>()
   const installed: BundleInfo = { ...CATALOG, availability: 'profile', installed: true, enabled: true, removable: true, version: '2.0.0' }
   const result = ok({ ...APPLIED, bundle: CATALOG.name })
   const listBundles = vi.fn().mockResolvedValue(ok([installed]))
     .mockResolvedValueOnce(ok([CATALOG])).mockReturnValueOnce(refreshing.promise)
-  const { controller, face, state, started, track } = bench({ listBundles, installBundle: vi.fn(() => installing.promise) })
+  const { controller, face, state, started } = bench({ listBundles, installBundle: vi.fn(() => installing.promise) })
   const reads: Promise<void>[] = []
   onTestFinished(async () => { installing.resolve(result); refreshing.resolve(ok([installed])); await Promise.all(reads) })
   await controller.load()
@@ -1871,13 +1608,11 @@ it.each(['before', 'after'] as const)('reports one Official toggle when inventor
   }
   installing.resolve(result)
   await vi.waitFor(() => { expect(state().install.phase).toBe('done') })
-  expect(track.mock.calls.filter(([event]) => event === 'plugin_toggle')).toEqual([['plugin_toggle', {
-    plugin_name: CATALOG.name, plugin_type: 'bundle', is_enabled: true, is_builtin: false,
-  }]])
+  expect(state().highlight).toBe(CATALOG.name)
   refreshing.resolve(ok([installed]))
   await refresh
   await controller.load()
-  expect(track.mock.calls.filter(([event]) => event === 'plugin_toggle')).toHaveLength(1)
+  expect(state().install.phase).toBe('done')
 })
 
 it.each([true, false])('updates an Official entry with enabled=%s by removing it, then using the same exact installer', async (enabled) => {

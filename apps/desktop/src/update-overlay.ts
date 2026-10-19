@@ -3,12 +3,12 @@ import { BrowserWindow } from 'electron'
 
 const unblockedInput = { revision: 0, blocked: false } as const
 
-/** Tracks application-owned update overlays and their parent input state. */
+/** Tracks application-owned shell dialog overlays and their parent input state. */
 export class DesktopUpdateOverlays {
   private readonly inputStates = new WeakMap<BrowserWindow, { revision: number; active: number; readonly blocked: boolean }>()
 
   /**
-   * @param parent - Product window whose input may belong to an update dialog.
+   * @param parent - Product window whose input may belong to a shell dialog.
    * @returns Current blocking state; its revision changes whenever an overlay opens or closes.
    */
   input(parent: BrowserWindow): { readonly revision: number; readonly blocked: boolean } {

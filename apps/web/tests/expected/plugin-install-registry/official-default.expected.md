@@ -1,8 +1,8 @@
 - group "从哪个 npm 源下载插件":
   - radio "npm 官方源 registry.npmjs.org" [checked]
   - text: npm 官方源 registry.npmjs.org
-  - radio "中国大陆镜像源 registry.npmmirror.com"
-  - text: 中国大陆镜像源 registry.npmmirror.com
+  - radio "registry.mirror.example"
+  - text: registry.mirror.example
   - radio "自定义地址"
   - text: 自定义地址
   - textbox "自定义地址":

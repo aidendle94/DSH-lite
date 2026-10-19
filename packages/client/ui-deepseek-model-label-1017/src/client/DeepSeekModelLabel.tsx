@@ -14,8 +14,7 @@ const MODEL_NAME = 'DeepSeek-V4.1-Flash'
 export function DeepSeekModelLabel({ provider, model, t }:
   PropsRuntime<'conversation.input.model.label'> & PropsLocale<'deepseek-model-label-1017'>,
 ) {
-  const official = provider.id === 'deepseek-account' || provider.id === 'deepseek-official'
-  if (!official || model.id !== 'deepseek-flash' || model.name !== MODEL_NAME) return model.name
+  if (provider.id !== 'deepseek-official' || model.id !== 'deepseek-flash' || model.name !== MODEL_NAME) return model.name
   return <span className={css.label}>
     <span>{model.name}</span>{' '}<Tag tone="info">{t('badge.label')}</Tag>
   </span>

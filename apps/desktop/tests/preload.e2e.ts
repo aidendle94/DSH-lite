@@ -49,7 +49,7 @@ function browserEnvironment() {
 }
 
 describe.skipIf(!existsSync(preload('preload-app')))('built sandboxed Desktop preloads', () => {
-  it.each(['preload-app', 'preload-welcome'])('%s loads without filesystem module access', async (name) => {
+  it.each(['preload-app', 'preload-update-dialog'])('%s loads without filesystem module access', async (name) => {
     const exposed = new Map<string, Record<string, unknown>>()
     const invoke = vi.fn<(...args: unknown[]) => Promise<unknown>>(() => Promise.resolve({ languages: ['en-US'], preference: 'zh' }))
     const send = vi.fn()
@@ -64,15 +64,12 @@ describe.skipIf(!existsSync(preload('preload-app')))('built sandboxed Desktop pr
         if (id !== 'electron') throw new Error(`sandbox cannot load ${id}`)
         return electron
       },
-      process: { argv: ['electron', '--dsh-welcome-locale=en'], isMainFrame: true },
-      location: new URL('dsh-app://app/'),
+      process: { argv: ['electron'], isMainFrame: true },
+      location: new URL(name === 'preload-app' ? 'dsh-app://app/' : 'dsh-app://shell/update-dialog.html'),
       exports: {},
     })
     if (name === 'preload-app') {
-      const product = exposed.get('dshDesktop') as { deviceInfo(): Promise<string> }
-      invoke.mockResolvedValueOnce('platform=darwin; memory_gib=32.0')
-      await expect(product.deviceInfo()).resolves.toBe('platform=darwin; memory_gib=32.0')
-      expect(invoke).toHaveBeenCalledWith('dsh-desktop:device-info')
+      expect(Object.keys(exposed.get('dshDesktop') ?? {}).sort()).toEqual(['browser', 'keyboard', 'protocolVersion', 'shortcuts'])
       browser.loadTheme('dark')
       expect(send).toHaveBeenCalledWith('dsh-desktop:native-theme-set', 'dark')
       browser.changeTheme('light')
@@ -83,10 +80,9 @@ describe.skipIf(!existsSync(preload('preload-app')))('built sandboxed Desktop pr
       bridge.onChange('zh')
       expect(send).toHaveBeenCalledWith('dsh-desktop:locale-changed', 'zh')
     } else {
-      expect(exposed.has('dshWelcome')).toBe(true)
-      const bridge = exposed.get('dshWelcome') as { takeNotice(): Promise<unknown> }
-      void bridge.takeNotice()
-      expect(invoke).toHaveBeenCalledWith('dsh-welcome:take-notice')
+      const bridge = exposed.get('dshUpdateDialog') as { status(): Promise<unknown> }
+      void bridge.status()
+      expect(invoke).toHaveBeenCalledWith('dsh-update-dialog:status')
     }
   })
 })

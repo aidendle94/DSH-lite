@@ -8,7 +8,7 @@ vi.mock('node:http', () => ({ createServer: httpMock.createServer }))
 
 // Snapshot plugins are plain runtime JavaScript loaded by cordis.yml.
 // @ts-expect-error The fixture intentionally has no declaration artifact.
-import * as searchFixtureModule from '../snapshots/session/web-search-endpoint-guidance/web-search-error-fixture.mjs'
+import * as searchFixtureModule from './fixtures/snapshot-loopback-http-fixture.mjs'
 // @ts-expect-error The fixture intentionally has no declaration artifact.
 import * as loopbackFixtureModule from '../snapshots/session/loopback-fixture-server.mjs'
 

@@ -73,27 +73,6 @@ function resolveCertificateFile(value) {
   return { path, certificate }
 }
 
-/**
- * Pin updater verification to the release certificate's organization, country, and common name.
- *
- * @param {string | undefined} certificateFile Public Windows Code Signing certificate file.
- * @returns {string} Distinguished-name attributes consumed by electron-updater.
- */
-export function resolveWindowsUpdatePublisher(certificateFile) {
-  const { certificate } = resolveCertificateFile(certificateFile)
-  const subject = certificate.toLegacyObject().subject
-  // These attributes have identical names in OpenSSL and Windows certificate subjects.
-  return ['CN', 'O', 'C'].map((key) => {
-    const value = subject[key]
-    if (typeof value !== 'string' || value.trim() === '') {
-      throw new Error(`Windows update publisher requires one nonempty ${key} certificate attribute`)
-    }
-    const escaped = value.replace(/[\\",;+\x00-\x20]/gu,
-      character => `\\${character.charCodeAt(0).toString(16).padStart(2, '0')}`)
-    return `${key}=${escaped}`
-  }).join(',')
-}
-
 function resolveSignTool(value) {
   const candidate = value?.trim()
   if (!candidate) {

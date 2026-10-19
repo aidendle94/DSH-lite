@@ -27,7 +27,7 @@ async function runtime() {
 }
 
 const placements = ['trigger', 'menu', 'option'] as const
-const targets = ['deepseek-official', 'deepseek-account'].flatMap(provider => placements.map(placement => ({ provider, placement })))
+const targets = ['deepseek-official'].flatMap(provider => placements.map(placement => ({ provider, placement })))
 it.each(targets)('shows the badge for $provider at $placement without rewriting its catalog entry', async ({ provider, placement }) => {
   const { host, session } = await runtime()
   await host.declare({ [SLOT]: { kind: 'single', scope: 'session', inline: true } })
@@ -42,8 +42,8 @@ it.each(targets)('shows the badge for $provider at $placement without rewriting 
 it.each([
   { label: 'another provider', value: owner('external') },
   { label: 'another model id', value: owner('deepseek-official', NAME, 'other-model') },
-  { label: 'a custom name', value: owner('deepseek-account', 'My Flash') },
-  { label: 'a dated name', value: owner('deepseek-account', `${NAME}-1017`) },
+  { label: 'a custom name', value: owner('deepseek-official', 'My Flash') },
+  { label: 'a dated name', value: owner('deepseek-official', `${NAME}-1017`) },
   { label: 'a later release name', value: owner('deepseek-official', `${NAME}-1024`) },
 ])('preserves $label', async ({ value }) => {
   const { host, session } = await runtime()

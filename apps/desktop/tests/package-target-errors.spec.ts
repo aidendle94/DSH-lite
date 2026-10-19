@@ -14,9 +14,9 @@ vi.mock('../scripts/macos-signing-keychain.mjs', () => ({
 }))
 // This test fakes the host platform, so the real probes would report the absent Windows compilers rather than the failure under test.
 vi.mock('../scripts/desktop-toolchain-preflight.ts', () => ({ requireDesktopToolchain: async () => {} }))
-vi.mock('node:fs', async importOriginal => ({
-  ...await importOriginal<typeof import('node:fs')>(),
-  rmSync: () => { throw new AggregateError([new Error('credential-sentinel')], 'restore:mac-proxy recovery required') },
+vi.mock('../scripts/desktop-build-paths.mjs', async importOriginal => ({
+  ...await importOriginal<typeof import('../scripts/desktop-build-paths.mjs')>(),
+  desktopTargetBuildPaths: () => { throw new AggregateError([new Error('credential-sentinel')], 'restore:mac-proxy recovery required') },
 }))
 vi.mock('../scripts/packaging-run.mjs', async (importOriginal) => {
   const original = await importOriginal<typeof import('../scripts/packaging-run.mjs')>()

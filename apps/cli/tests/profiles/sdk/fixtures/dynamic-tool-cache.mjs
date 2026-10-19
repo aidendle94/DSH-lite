@@ -3,7 +3,7 @@ import { appendFile } from 'node:fs/promises'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'sdk-dynamic-tool-cache-fixture'
-export const inject = ['tools', 'systemPrompt', 'deepseekLlmApiExtensions']
+export const inject = ['tools', 'systemPrompt']
 
 /** Observe each request and let the model add or remove a scoped tool. */
 export function apply(ctx, config) {
@@ -15,15 +15,24 @@ export function apply(ctx, config) {
       state.step = event.data.step
     }
   })
-  ctx.effect(() => ctx.deepseekLlmApiExtensions.register('dynamic_tool_cache_observer', {
-    async prepare(request) {
-      if (request.purpose !== undefined) return undefined
-      const state = states.get(request.sessionId)
-      if (state === undefined) throw new Error('The SDK request has no observed agent.')
-      await appendFile(config.evidencePath, `${JSON.stringify({ ...state, body: request.body })}\n`)
-      return undefined
-    },
-  }))
+  // Observe the exact Messages body at the process fetch boundary; agent requests carry the control tool.
+  ctx.effect(() => {
+    const original = globalThis.fetch
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.endsWith('/v1/messages') && typeof init?.body === 'string') {
+        const headers = new Headers(init.headers)
+        const body = JSON.parse(init.body)
+        if (!headers.has('x-deepseek-harness-compact') && body.tools?.some(tool => tool.name === 'cache_tool_control')) {
+          const state = states.get(headers.get('x-deepseek-harness-session-id'))
+          if (state === undefined) throw new Error('The SDK request has no observed agent.')
+          await appendFile(config.evidencePath, `${JSON.stringify({ ...state, body })}\n`)
+        }
+      }
+      return original(input, init)
+    }
+    return () => { globalThis.fetch = original }
+  })
   ctx.on('agent/created', ({ agent }) => {
     const scope = agent.ctx
     const state = { stage: 'initial', turn: 0, step: 0 }

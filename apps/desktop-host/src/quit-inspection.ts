@@ -3,14 +3,30 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-schedule'
-import { hasDesktopActiveTasks } from './update-tasks.ts'
+import type {} from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-jobs'
 
 /** What quitting the Host now would affect. */
 export interface DesktopQuitInspection {
-  /** Work the shared update-restart check also counts: running agents, queued messages, live jobs. */
+  /** Interruptible work: running agents, queued messages, live jobs. */
   readonly activeTasks: boolean
   /** A loaded session holds a scheduled reminder whose timer is armed in this process. */
   readonly scheduledTasks: boolean
+}
+
+/**
+ * Whether stopping the Host now would interrupt work: a generating or tool-running
+ * agent (including subagents and turns waiting for approval), queued inbox
+ * messages, or a running or stopping background job.
+ * @param liveAgents - Current agent roster.
+ * @param jobs - Job registry queried for the global roster and each agent's own jobs.
+ * @returns true when any of those conditions holds.
+ */
+function hasDesktopActiveTasks(liveAgents: ReturnType<Context['agents']['list']>, jobs: Context['jobs']): boolean {
+  return liveAgents.some(agent => agent.status === 'running'
+    || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0)
+    || [undefined, ...liveAgents].some(agent => jobs.list(agent?.id)
+      .some(job => job.status === 'running' || job.status === 'stopping'))
 }
 
 /**

@@ -12,14 +12,14 @@ import {
 } from '../scripts/desktop-bundle-imports.mjs'
 
 const MAIN: BundleImportPolicy = {
-  packages: new Set(['electron', 'electron-updater', '@deepseek-ai/dsh-api-gateway']),
+  packages: new Set(['electron', 'semver', '@deepseek-ai/dsh-api-gateway']),
   nodeBuiltins: true,
 }
 const PRELOAD: BundleImportPolicy = { packages: new Set(['electron', 'events', 'timers', 'url']), nodeBuiltins: false }
 
 describe('desktop bundle imports', () => {
   it('names the package behind a bare specifier', () => {
-    expect(importPackageName('electron-updater/out/electronHttpExecutor.js')).toBe('electron-updater')
+    expect(importPackageName('semver/functions/valid.js')).toBe('semver')
     expect(importPackageName('@deepseek-ai/dsh-api-gateway/stream-protocol')).toBe('@deepseek-ai/dsh-api-gateway')
     expect(importPackageName('ws')).toBe('ws')
   })
@@ -38,7 +38,7 @@ describe('desktop bundle imports', () => {
       'node:fs/promises',
       'crypto',
       'electron',
-      'electron-updater/out/electronHttpExecutor.js',
+      'semver/functions/valid.js',
       '@deepseek-ai/dsh-api-gateway/stream-protocol',
     ], MAIN)).toEqual([])
   })

@@ -225,8 +225,8 @@ it('reads the current locale for each presentation', async () => {
     const window = fixture.windows.at(-1)!
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
     expect(fixture.handlers.get(UPDATE_DIALOG_IPC.status)!(event)).toMatchObject({
-      locale: locale.id, closeLabel: locale.messages.updateClose,
-      technicalDetailsLabel: locale.messages.updateTechnicalDetails,
+      locale: locale.id, closeLabel: locale.messages.dialogClose,
+      technicalDetailsLabel: locale.messages.dialogTechnicalDetails,
     })
     dialogs!.cancel()
     await pending

@@ -1,18 +1,17 @@
-// Real Git reaches a controlled proxy failure or stall; the browser
-// offers a mirror for a replacement spec, or another way once the install
-// already asks the mirror, without retrying the failed address.
+// Real Git reaches a controlled proxy failure or stall; the browser shows the
+// ordinary failed screen naming the unreachable host, pnpm never starts, and
+// Retry asks the same address again.
 import { once } from 'node:events'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { createServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { expect, it, onTestFinished } from 'vitest'
-import { launchWebScaffold, captureStableAria, compareOrRefreshGolden, webSnapshotMode, watchConsole } from './scaffold.ts'
+import { launchWebScaffold, watchConsole } from './scaffold.ts'
 import { ZH_BROWSER_LOCALE } from './support.ts'
 
-it.each(['network', 'timeout'] as const)('offers a mirror after a GitHub %s, then another way on the mirror, and waits for replacement input', async (failure) => {
+it.each(['network', 'timeout'] as const)('names the unreachable GitHub host after a %s without starting pnpm', async (failure) => {
   const scratch = await mkdtemp(join(tmpdir(), 'dsh-install-github-'))
   onTestFinished(() => rm(scratch, { recursive: true, force: true }))
   const sockets = new Set<Socket>()
@@ -33,11 +32,8 @@ it.each(['network', 'timeout'] as const)('offers a mirror after a GitHub %s, the
   if (address === null || typeof address === 'string') throw new Error('proxy did not bind a TCP port')
   const gitConfig = join(scratch, 'git.config')
   await writeFile(gitConfig, `[http "https://github.com/"]\n proxy = http://127.0.0.1:${String(address.port)}\n`)
-  const overlay = join(scratch, 'cordis.patch.yml')
-  await writeFile(overlay, '- id: ui-plugin-manager\n  config: { registryProbeEnabled: false }\n')
   const scaffold = await launchWebScaffold({
     profile: { packages: [], packageManager: { command: process.execPath, args: [], env: { GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' } } },
-    extraOverlayPath: overlay,
   })
   onTestFinished(() => scaffold.close())
   const browser = await chromium.launch()
@@ -61,63 +57,22 @@ it.each(['network', 'timeout'] as const)('offers a mirror after a GitHub %s, the
   await page.getByRole('navigation', { name: '全局面板' }).getByRole('button', { name: '插件', exact: true }).click()
   await page.getByRole('button', { name: '添加插件', exact: true }).click()
   const spec = 'https://github.com/example/dsh-plugin.git'
-  const title = failure === 'timeout' ? '连接 GitHub 超时' : '无法访问 GitHub'
-  let dialog = page.getByRole('dialog', { name: '添加插件', exact: true })
+  const hostSentence = '无法连接 github.com。GitHub 地址和 .tgz 直链不经过安装源，需要本机能直接访问它或配置代理；如果这个插件也发布到了 npm，请改填包名。'
+  const dialog = page.getByRole('dialog')
   await dialog.getByRole('button', { name: '安装源 npm 官方源', exact: true }).waitFor()
   await dialog.getByRole('textbox', { name: '包名或地址' }).fill(spec)
-  expect(await page.getByText(title, { exact: true }).count()).toBe(0)
   await dialog.getByRole('button', { name: '安装', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: title, exact: true })
-  await dialog.waitFor()
+  await dialog.getByText(hostSentence, { exact: true }).waitFor()
   expect(await page.getByRole('dialog').count()).toBe(1)
-  expect(await dialog.getByText('请尝试其他安装来源。', { exact: true }).count()).toBe(1)
-  await compareOrRefreshGolden(
-    fileURLToPath(new URL(`./expected/plugin-install-github/${failure === 'timeout' ? 'timeout' : 'failed'}.expected.md`, import.meta.url)),
-    await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), webSnapshotMode(),
-  )
-  const attempts = await readFile(join(profile, '.attempts'), 'utf8')
-  expect(attempts).toBe('')
+  expect(await readFile(join(profile, '.attempts'), 'utf8')).toBe('')
   expect(connections).toBeGreaterThan(0)
   await expect.poll(() => sockets.size).toBe(0)
   const checked = connections
-  await dialog.getByRole('button', { name: '改用国内镜像', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '添加插件', exact: true })
-  const input = dialog.getByRole('textbox', { name: '插件包名', exact: true })
-  await input.waitFor()
-  expect(await input.inputValue()).toBe('')
-  expect(await input.evaluate(element => element === document.activeElement)).toBe(true)
-  expect(await dialog.getByRole('button', { name: '安装', exact: true }).isDisabled()).toBe(true)
-  await dialog.getByRole('button', { name: '安装源 中国大陆镜像源', exact: true }).waitFor()
-  await compareOrRefreshGolden(
-    fileURLToPath(new URL('./expected/plugin-install-github/mirror.expected.md', import.meta.url)),
-    await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), webSnapshotMode(),
-  )
-  expect(await readFile(join(profile, '.attempts'), 'utf8')).toBe(attempts)
-  expect(connections).toBe(checked)
-  expect(await readFile(manifestPath, 'utf8')).toBe(manifestBefore)
-  await input.fill(spec)
-  await dialog.getByRole('button', { name: '安装', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: title, exact: true })
-  await dialog.waitFor()
-  await compareOrRefreshGolden(
-    fileURLToPath(new URL(`./expected/plugin-install-github/${failure === 'timeout' ? 'timeout' : 'failed'}-on-mirror.expected.md`, import.meta.url)),
-    await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), webSnapshotMode(),
-  )
-  await dialog.getByRole('button', { name: '试试其他方式', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: '添加插件', exact: true })
-  await dialog.getByRole('button', { name: '收起引导', exact: true }).waitFor()
-  expect(await input.inputValue()).toBe('')
-  expect(await input.evaluate(element => element === document.activeElement)).toBe(true)
-  await compareOrRefreshGolden(
-    fileURLToPath(new URL('./expected/plugin-install-github/another-way.expected.md', import.meta.url)),
-    await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), webSnapshotMode(),
-  )
-  await input.fill(spec)
-  await dialog.getByRole('button', { name: '安装', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: title, exact: true })
-  await dialog.getByRole('button', { name: '取消', exact: true }).click()
-  await dialog.waitFor({ state: 'detached' })
+  // Retry asks the same address again; the connection check still fails before pnpm starts.
+  await dialog.getByRole('button', { name: '重试', exact: true }).click()
+  await expect.poll(() => connections).toBeGreaterThan(checked)
+  await dialog.getByText(hostSentence, { exact: true }).waitFor()
   expect(await readFile(join(profile, '.attempts'), 'utf8')).toBe('')
-  expect(connections).toBeGreaterThan(checked)
+  expect(await readFile(manifestPath, 'utf8')).toBe(manifestBefore)
   expect(tripwire.pageErrors).toEqual([])
 })

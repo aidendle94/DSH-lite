@@ -113,7 +113,7 @@ export function PreparationCard({ provider, connected, prepare, cancelPreparatio
         {sources.length > 1 && <option value="">{t('sourceAuto')}</option>}
         {sources.map(origin => <option key={origin} value={origin}>
           {origin === 'https://huggingface.co' ? t('sourceHuggingFace')
-            : origin === 'https://hf-mirror.com' ? t('sourceMirror') : origin}
+            : origin}
         </option>)}
       </select></label>
       <small className={css.metric}>{t(selectedSource === '' ? 'sourceAutoHelp' : 'sourceManualHelp')}</small>

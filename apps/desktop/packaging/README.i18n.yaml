@@ -3,38 +3,38 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/desktop/packaging/README.md
 /:
-  en: 9bc7767fc1bced33
-  zh: 4f6198337a573cf4
+  en: 5b3aaf093f7dd7e4
+  zh: 78820e3bd7b9b8b1
 /desktop-packaging:
   en: b35e10c88ade04fe
   zh: a2d09add03407b91
 /desktop-packaging/summary:
-  en: e98e516b9e1bd0f4
-  zh: 1a2abd7d89ef78a1
+  en: 7b12cabc57f1d427
+  zh: 7df45e65dedd3b43
 /desktop-packaging/table-of-contents:
   en: a6203dc2e690c7e1
   zh: 07b516549b8e3328
 /desktop-packaging/choose-a-build-path:
-  en: 17c6bcdefa05a8f8
-  zh: 4ee18f832276144d
+  en: b9fb9903994bfc2d
+  zh: 1c5b6a6c0fc59451
 /desktop-packaging/release-versions:
-  en: 3f38ab26ee195b39
-  zh: f00eddafa8f3b9ca
+  en: 021d29e3beb42977
+  zh: 1ff2b7b6725bee58
 /desktop-packaging/configuration-and-local-builds:
-  en: f5dc36baf414ecc5
-  zh: 8984741b356ac1d3
+  en: cb30ec00cca96cc4
+  zh: 256b712b4b36c9f2
 /desktop-packaging/windows-actions-packaging:
   en: e1b101593f6f755e
   zh: 121f225de399de1e
 /desktop-packaging/macos-self-hosted-packaging:
-  en: a3af9523fdc60036
-  zh: 5e18d4740e9b7f57
+  en: 6a9cbf1c76ff0e83
+  zh: 102031d97733343e
 /desktop-packaging/unsigned-windows-test-installer:
-  en: 6843a0fdc03ead58
-  zh: 957f92fc8126e23e
+  en: b7fbae1aeec18169
+  zh: a22a2f3b87b28d09
 /desktop-packaging/local-macos-dmg-without-release-signing:
-  en: 2feaa0412247d81f
-  zh: 461dde8e13fd4734
+  en: e6b40b9556bae0c1
+  zh: 3aa5b27e1049aa52
 /desktop-packaging/macos-release-signing-and-diagnostics:
   en: 62c125856aa03c26
   zh: 9fc00a43c8b1e8e2
@@ -45,14 +45,14 @@
   en: b42f103358d0dfd7
   zh: a534164ad9eb00da
 /desktop-packaging/runtime-file-selection-and-installation-checks:
-  en: bfd89e1d139c5729
-  zh: 5d6cced5462ba13e
+  en: d4b2e58f66fdf384
+  zh: 6e4bcd9408826ed6
 /desktop-packaging/desktop-runtime-preparation:
-  en: a7aa3066e649ffe8
-  zh: 4334637910058c09
+  en: 75ec73a88f96e059
+  zh: 1754e1ebe0852e1b
 /desktop-packaging/installation-and-release-verification:
-  en: 0006b6b1ae4998f4
-  zh: 2bab6918b0c37b25
+  en: a6044907ab87c434
+  zh: ea7af4e8055849c0
 /desktop-packaging/dev-note:
   en: b75c8458928b72b9
   zh: 003ba4e17b4b5269

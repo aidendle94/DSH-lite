@@ -162,18 +162,18 @@ it('shows provider-specific installation estimates before preparation and remove
 
 it('offers Host sources, submits a manual choice, and retains it for retry', async () => {
   const b = fixture({ phase: 'unprepared' })
-  const provider = { ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://hf-mirror.com'] }
+  const provider = { ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://mirror.hf.example'] }
   b.rerender(<PreparationCard {...b.props} provider={provider} />)
   const picker = screen.getByLabelText<HTMLSelectElement>(zh.sourceChoice)
   expect(picker.value).toBe('')
-  expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual([zh.sourceAuto, zh.sourceHuggingFace, zh.sourceMirror])
+  expect(within(picker).getAllByRole('option').map(option => option.textContent)).toEqual([zh.sourceAuto, zh.sourceHuggingFace, 'https://mirror.hf.example'])
   expect(screen.getByText(zh.sourceAutoHelp)).toBeTruthy()
-  fireEvent.change(picker, { target: { value: 'https://hf-mirror.com' } })
+  fireEvent.change(picker, { target: { value: 'https://mirror.hf.example' } })
   expect(screen.getByText(zh.sourceManualHelp)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: zh.prepare }))
-  await waitFor(() => { expect(b.prepare).toHaveBeenCalledWith(id, { downloadSource: 'https://hf-mirror.com' }) })
+  await waitFor(() => { expect(b.prepare).toHaveBeenCalledWith(id, { downloadSource: 'https://mirror.hf.example' }) })
   b.rerender(<PreparationCard {...b.props} provider={{ ...provider, preparation: { phase: 'failed', message: 'offline' } }} />)
-  expect(screen.getByLabelText<HTMLSelectElement>(zh.sourceChoice).value).toBe('https://hf-mirror.com')
+  expect(screen.getByLabelText<HTMLSelectElement>(zh.sourceChoice).value).toBe('https://mirror.hf.example')
   fireEvent.change(picker, { target: { value: 'https://huggingface.co' } })
   fireEvent.click(screen.getByRole('button', { name: zh.retryPrepare }))
   await waitFor(() => { expect(b.prepare).toHaveBeenLastCalledWith(id, { downloadSource: 'https://huggingface.co' }) })
@@ -184,8 +184,8 @@ it('offers Host sources, submits a manual choice, and retains it for retry', asy
 
 it('respects a fixed private source and removes a choice that the Host withdraws', async () => {
   const b = fixture({ phase: 'unprepared' })
-  b.rerender(<PreparationCard {...b.props} provider={{ ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://hf-mirror.com'] }} />)
-  fireEvent.change(screen.getByLabelText(zh.sourceChoice), { target: { value: 'https://hf-mirror.com' } })
+  b.rerender(<PreparationCard {...b.props} provider={{ ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://mirror.hf.example'] }} />)
+  fireEvent.change(screen.getByLabelText(zh.sourceChoice), { target: { value: 'https://mirror.hf.example' } })
   b.rerender(<PreparationCard {...b.props} provider={{ ...b.props.provider, downloadSources: ['https://private.example'] }} />)
   const picker = screen.getByLabelText<HTMLSelectElement>(zh.sourceChoice)
   expect(picker.value).toBe('https://private.example')
@@ -200,7 +200,7 @@ it('respects a fixed private source and removes a choice that the Host withdraws
 it('locks source changes while a preparation request is pending and hides them during active work', async () => {
   const b = fixture({ phase: 'unprepared' }), pending = Promise.withResolvers<undefined>()
   b.prepare.mockImplementation(async () => { await pending.promise })
-  const provider = { ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://hf-mirror.com'] }
+  const provider = { ...b.props.provider, downloadSources: ['https://huggingface.co', 'https://mirror.hf.example'] }
   b.rerender(<PreparationCard {...b.props} provider={provider} />)
   fireEvent.click(screen.getByRole('button', { name: zh.prepare }))
   try {

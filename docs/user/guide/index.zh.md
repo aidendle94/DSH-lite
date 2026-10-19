@@ -6,7 +6,7 @@
 
 ## 配置模型
 
-打开**设置 → 模型**，输入 [DeepSeek API 密钥](https://platform.deepseek.com/)并保存。模型路由会立即可用，不需要重启服务器。
+打开**设置 → 模型**，选择**添加模型提供商**并选取 `anthropic`、`openai` 等提供商（或在 DeepSeek 卡片中填写密钥），输入其 API 密钥并保存。模型路由会立即可用，不需要重启服务器。
 
 [模型配置指南](./providers.zh.md)介绍其他提供方和自定义 OpenAI 兼容端点。
 

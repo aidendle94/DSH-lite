@@ -23,7 +23,7 @@ async function fixture(overrides: Partial<Config> = {}) {
   cleanup.push(async () => { await ctx.fiber.dispose() })
   await ctx.plugin(LocalSubprocess)
   const spawn = vi.spyOn(ctx.get('subprocess')!, 'spawn')
-  const config = Config({ dataRoot: root, idleTimeoutMs: 0, ...overrides })
+  const config = Config({ dataRoot: root, idleTimeoutMs: 0, modelOrigins: ['https://huggingface.co', 'https://mirror.hf.example'], ...overrides })
   vi.mocked(prepareRuntime).mockImplementation(async () => ({ tokens: root,
     worker: fileURLToPath(new URL('./worker.fixture.mjs', import.meta.url)), model: root, vad: root }))
   const worker = new SenseVoiceWorker(ctx, config)
@@ -65,17 +65,17 @@ it('keeps one worker warm across recordings and joins its exit on disposal', asy
 
 it('pins a manual source to one preparation without changing deployment defaults', async () => {
   const { worker } = await fixture()
-  expect(worker.downloadSources).toEqual(['https://huggingface.co', 'https://hf-mirror.com'])
-  worker.prepare({ downloadSource: 'https://hf-mirror.com' })
+  expect(worker.downloadSources).toEqual(['https://huggingface.co', 'https://mirror.hf.example'])
+  worker.prepare({ downloadSource: 'https://mirror.hf.example' })
   await vi.waitFor(() => { expect(worker.snapshot().phase).toBe('ready') })
-  expect(prepareRuntime).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ modelOrigin: 'https://hf-mirror.com' }),
+  expect(prepareRuntime).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ modelOrigin: 'https://mirror.hf.example' }),
     expect.any(AbortSignal), expect.any(Function))
 })
 
 it('rejects unadvertised sources and preserves private and offline deployments', async () => {
   const { worker } = await fixture({ modelOrigin: 'https://private.example/' })
   expect(worker.downloadSources).toEqual(['https://private.example'])
-  expect(() => { worker.prepare({ downloadSource: 'https://hf-mirror.com' }) }).toThrow('unavailable')
+  expect(() => { worker.prepare({ downloadSource: 'https://mirror.hf.example' }) }).toThrow('unavailable')
   expect(prepareRuntime).not.toHaveBeenCalled()
   const offline = await fixture({ modelDirectory: process.cwd(), vadModelPath: process.cwd() })
   expect(offline.worker.downloadSources).toEqual([])
@@ -89,9 +89,9 @@ it('joins matching requests and refuses to change the source of active preparati
     await new Promise((_resolve, reject) => { signal.addEventListener('abort', () => { reject(new Error('preparation cancelled')) }, { once: true }) })
     throw new Error('unreachable')
   })
-  worker.prepare({ downloadSource: 'https://hf-mirror.com' })
+  worker.prepare({ downloadSource: 'https://mirror.hf.example' })
   await entered.promise
-  worker.prepare({ downloadSource: 'https://hf-mirror.com' })
+  worker.prepare({ downloadSource: 'https://mirror.hf.example' })
   expect(() => { worker.prepare({ downloadSource: 'https://huggingface.co' }) }).toThrow('Cancel preparation')
   expect(prepareRuntime).toHaveBeenCalledOnce()
   await worker.cancel()

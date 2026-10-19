@@ -23099,7 +23099,7 @@
       "digest": "2d11ca7b0d4493e244b74eba093227866b33249841e59a1e9bf56afed38604c3",
       "names": [],
       "sources": [
-        "packages/web/web-search-deepseek/src/provider.ts:71"
+        "packages/core/session/src/types.ts:468"
       ]
     },
     {
@@ -23205,7 +23205,7 @@
         "packages/core/session/src/types.ts#SurfaceOp"
       ],
       "sources": [
-        "packages/core/session/src/types.ts:463"
+        "packages/core/session/src/types.ts:510"
       ]
     },
     {
@@ -23254,7 +23254,7 @@
       "digest": "37ff65426bcf130f045d3a59ef2a4648eb170cd30280cbd024108a2e9b4401d1",
       "names": [],
       "sources": [
-        "packages/web/web-search-deepseek/src/provider.ts:82"
+        "packages/core/session/src/types.ts:474"
       ]
     },
     {
@@ -23574,7 +23574,7 @@
         "packages/workflow/workflow/src/types.ts#WorkflowRunId"
       ],
       "sources": [
-        "packages/api/session-controller/src/types.ts:409",
+        "packages/api/session-controller/src/types.ts:407",
         "packages/attachment/attachment/src/brand.ts:6",
         "packages/compaction/compaction/src/brand.ts:4",
         "packages/core/session/src/types.ts:21",
@@ -23616,8 +23616,8 @@
         "packages/llm/llm/src/types.ts#TextBlock"
       ],
       "sources": [
-        "packages/llm/llm/src/types.ts:62",
-        "packages/web/web-search-deepseek/src/provider.ts:66"
+        "packages/core/session/src/types.ts:463",
+        "packages/llm/llm/src/types.ts:62"
       ]
     },
     {
@@ -24096,7 +24096,7 @@
       "digest": "6dacb1584f2bfbe209dc6b6f578d51da6d55595f64d0e63c727c98f359278def",
       "names": [],
       "sources": [
-        "packages/api/session-controller/src/types.ts:418"
+        "packages/api/session-controller/src/types.ts:416"
       ]
     },
     {
@@ -24537,7 +24537,7 @@
       "digest": "8bb8c3751a6ce64b61aba1ec7ae798c00a5803c4d868a0430873216c6569ed52",
       "names": [],
       "sources": [
-        "packages/session/session-log-deepseek/src/types.ts:81"
+        "packages/core/session/src/types.ts:435"
       ]
     },
     {
@@ -24725,7 +24725,7 @@
       "digest": "9a2a9029f8d7ede05336980d8342737557f487b913bfd28853d0ab5214600ab5",
       "names": [],
       "sources": [
-        "packages/web/web-search-deepseek/src/provider.ts:64"
+        "packages/core/session/src/types.ts:461"
       ]
     },
     {
@@ -24765,7 +24765,7 @@
       "digest": "9c001ecb5e1d3c3894410db2a1e383842e5f8454fb52182338686158abc1b3ee",
       "names": [],
       "sources": [
-        "packages/web/web-search-deepseek/src/provider.ts:61"
+        "packages/core/session/src/types.ts:458"
       ]
     },
     {
@@ -25018,10 +25018,10 @@
     {
       "digest": "abd6ca62a5ab166553848324a23fef90eed7f59c8021bd63e7ea5bc6fd666b0c",
       "names": [
-        "packages/web/web-search-deepseek/src/provider.ts#DeepSeekSearchLlmRequest"
+        "packages/core/session/src/types.ts#UpstreamDeepSeekSearchLlmRequest"
       ],
       "sources": [
-        "packages/web/web-search-deepseek/src/provider.ts:55"
+        "packages/core/session/src/types.ts:452"
       ]
     },
     {
@@ -25342,7 +25342,7 @@
       "digest": "bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825",
       "names": [],
       "sources": [
-        "packages/core/session/src/types.ts:465"
+        "packages/core/session/src/types.ts:512"
       ]
     },
     {

@@ -53,7 +53,8 @@ async function fixture(reload: 'live' | 'startup' = 'live', overlay = false, pre
     writeFileSync(join(path, 'cordis.patch.yml'), JSON.stringify([{ insert: rows }]))
     writeFileSync(join(path, 'plugin.mjs'), 'export function apply(ctx, config) { if (config?.fail) throw new Error("test activation failed"); ctx.provide(config?.service ?? "managedProbe", true) }\n')
   }
-  bundle('core', [{ id: 'manager', name: 'cordis:manager', config }])
+  // Fallback behavior is exercised against an explicitly configured test mirror; the shipped default is none.
+  bundle('core', [{ id: 'manager', name: 'cordis:manager', config: { fallbackRegistries: ['https://mirror.registry.example/'], ...config } }])
   bundle('extra', [{ id: 'managed', name: './plugin.mjs' }])
   const manifest = readProfileManifest('test', dir)
   manifest.dependencies = { extra: '1.0.0' }
@@ -1242,7 +1243,7 @@ it('installs and removes with the bundled pnpm when PATH contains no pnpm', asyn
   expect(readProfileManifest('test', dir).dependencies ?? {}).not.toHaveProperty('@test/desktop-manager')
 })
 
-const MIRROR = 'https://registry.npmmirror.com/'
+const MIRROR = 'https://mirror.registry.example/'
 const OFFICIAL = 'https://registry.npmjs.org/'
 
 /** What pnpm's own configuration names in the profile, for the tests that need something other than npm's own registry. */
@@ -1251,7 +1252,7 @@ function pnpmNames(url: string | null = OFFICIAL) {
 }
 
 it('asks the registries in turn while one is unreachable or stale, and names the one that answered', async () => {
-  const { manager, dir } = await fixture(undefined, false, undefined, { inspectTimeoutMs: 1000, fallbackRegistries: ['https://REGISTRY.npmmirror.com'] })
+  const { manager, dir } = await fixture(undefined, false, undefined, { inspectTimeoutMs: 1000, fallbackRegistries: ['https://MIRROR.registry.example'] })
   const read = pnpmNames()
   const view = vi.spyOn(operations, 'viewProfilePackage')
   onTestFinished(() => { view.mockRestore() })
@@ -1272,7 +1273,7 @@ it('asks the registries in turn while one is unreachable or stale, and names the
   expect(await manager.inspect('dsh-x')).toMatchObject({ status: 'accepted', registry: MIRROR })
   expect(asked(2)).toEqual([null, MIRROR])
   // A requested registry goes first. A mirror's 404 may be a copy not yet synced, so the lookup goes on; every registry's 404 is not-found.
-  view.mockResolvedValueOnce({ exitCode: 1, stdout: '{"error":{"code":"ERR_PNPM_FETCH_404","message":"GET https://registry.npmmirror.com/dsh-x: Not Found - 404"}}', stderr: '', timedOut: false })
+  view.mockResolvedValueOnce({ exitCode: 1, stdout: '{"error":{"code":"ERR_PNPM_FETCH_404","message":"GET https://mirror.registry.example/dsh-x: Not Found - 404"}}', stderr: '', timedOut: false })
   failure('ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/dsh-x: Not Found - 404\n')
   expect(await manager.inspect('dsh-x', { registry: MIRROR })).toMatchObject({
     status: 'refused', problem: 'not-found', reason: 'ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/dsh-x: Not Found - 404', registries: [MIRROR, null],
@@ -1438,6 +1439,7 @@ it('reports a stop that lands before a run starts, while the registries are read
 
 it('answers the configured registries in pnpm\'s comparison form with what pnpm names, and refuses one that is not an http(s) URL at load', async () => {
   expect(await (await fixture()).manager.registries()).toEqual({ registry: null, fallbackRegistries: [MIRROR], resolved: OFFICIAL })
+  expect(PluginManager.Config({}).fallbackRegistries).toEqual([])
   const { manager } = await fixture(undefined, false, undefined, { registry: 'https://NPM.corp.example', fallbackRegistries: [] })
   expect(await manager.registries()).toEqual({ registry: 'https://npm.corp.example/', fallbackRegistries: [], resolved: OFFICIAL })
   expect(() => PluginManager.Config({ registry: 'npm.corp.example' })).toThrow()

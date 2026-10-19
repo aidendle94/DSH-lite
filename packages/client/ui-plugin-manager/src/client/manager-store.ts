@@ -1,4 +1,3 @@
-import { sanitizeInstallInput } from './sanitize-install-input.ts'
 /**
  * The plugin manager's state: the Host's bundles joined with its plugin
  * entries, the action in flight, the install run, and the confirmation an
@@ -6,7 +5,6 @@ import { sanitizeInstallInput } from './sanitize-install-input.ts'
  * after each action and after every `plugin-manager/changed` event, so a
  * change made on another surface shows here without a manual refresh.
  */
-import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {
@@ -27,7 +25,7 @@ import type {
   Registry,
   RestartReason,
 } from '@deepseek-ai/dsh-api-remotes/client'
-import { normalizeRegistry, NPMMIRROR_REGISTRY, OFFICIAL_NPM_REGISTRY, REGISTRY_URL } from '@deepseek-ai/dsh-plugin-manager/registry'
+import { normalizeRegistry, REGISTRY_URL } from '@deepseek-ai/dsh-plugin-manager/registry'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { LocalizedText, PluginLocalizedMeta } from '@deepseek-ai/dsh-package-manifest'
@@ -198,8 +196,6 @@ export interface InstallState {
   readonly open: boolean
   /** The package spec as typed. */
   readonly spec: string
-  /** The spec form was reopened after switching away from a failed GitHub address. */
-  readonly mirrorRecovery?: boolean
   /**
    * The spec came from a confirmed entry of another tab, with that entry's name and version: the dialog shows no spec
    * form, only its check and outcome.
@@ -268,32 +264,6 @@ export function isInstallPending(phase: InstallState['phase']): boolean {
   return phase === 'starting' || phase === 'running' || phase === 'cancelling' || phase === 'applying' || phase === 'unconfirmed'
 }
 
-/**
- * Offer the configured mainland mirror after a confirmed GitHub connection failure.
- * @param install - the installation and the Host's failure attribution.
- * @returns the offered entry that asks npmmirror, null when that entry is pnpm's own configuration, or undefined when
- * this recovery does not apply; test for undefined, because null is a valid entry.
- */
-export function githubRecoveryRegistry(install: InstallState): Registry | undefined {
-  // The mirror recovery reopens the spec form, which a confirmed spec does not have.
-  if (install.confirmed !== undefined || install.phase !== 'failed' || install.failure?.failedAt !== 'spec-host'
-    || (install.failure.kind !== 'network' && install.failure.kind !== 'timeout')) return undefined
-  const host = install.subject?.host?.toLowerCase().split(':')[0]
-  if (host !== 'github.com' && !host?.endsWith('.github.com')) return undefined
-  const resolved = install.registries?.resolved ?? null
-  return offeredRegistries(install.registries).find(registry => registryKey(registry, resolved) === NPMMIRROR_REGISTRY)
-}
-
-/**
- * Whether the install already asks npmmirror first, so switching to the offered mirror would not change the registry.
- * @param install - the installation and its registry choice.
- * @returns true when the chosen registry, offered or typed, compares as npmmirror.
- */
-export function asksMirror(install: InstallState): boolean {
-  const choice = install.registry
-  return registryKey(choice.kind === 'custom' ? choice.url.trim() : choice.registry, install.registries?.resolved ?? null) === NPMMIRROR_REGISTRY
-}
-
 /** A destructive action waiting for the user's confirmation: a package's uninstall. */
 export interface ConfirmState {
   readonly action: 'uninstall'
@@ -359,8 +329,6 @@ export interface PluginManagerFace {
   chooseRegistry: (choice: RegistryChoice) => void
   /** From the failed screen: back to the spec with the registry options unfolded. */
   changeRegistry: () => void
-  /** Return from a GitHub connection failure to an empty spec asking the offered mainland mirror, keeping a choice that asks it. */
-  useGithubMirror: () => void
   /** Allow the install scripts the failed run left pending, saved for this profile, and run the same spec again. */
   approveBuildsAndRetry: () => void
   /** Leave the check or the failed screen for the spec, or ask the Host to stop the run and wait for its cleanup. */
@@ -495,11 +463,11 @@ const IDLE_INSTALL: InstallState = {
 
 /** The dialog back at its spec: the run and its outcome forgotten, the spec and the registries kept. */
 function specAgain(install: InstallState): InstallState {
-  const { open, spec, registries, registry, mirrorRecovery, confirmed } = install
+  const { open, spec, registries, registry, confirmed } = install
   return {
     ...IDLE_INSTALL, open, spec, registries, registry,
     ...install.subject?.selection === undefined ? {} : { subject: install.subject },
-    ...mirrorRecovery === undefined ? {} : { mirrorRecovery }, ...confirmed === undefined ? {} : { confirmed },
+    ...confirmed === undefined ? {} : { confirmed },
   }
 }
 
@@ -520,21 +488,8 @@ function reconciled(remembered: RegistryChoice | null, registries: PluginRegistr
 interface RegistryRead {
   /** Last automatically assigned choice; a different object belongs to a manual selection. */
   choice: RegistryChoice
-  /** Pending initial registry list and response probes; an untouched installation waits until it settles. */
+  /** Pending initial registry list read; an untouched installation waits until it settles. */
   done?: Promise<void>
-}
-
-/** Only the shipped public mirror can replace an unconfigured official npm default. */
-function eligibleMirror(registries: PluginRegistries): string | undefined {
-  if (registries.registry !== null || registries.resolved === null) return undefined
-  let resolved: string
-  try { resolved = normalizeRegistry(registries.resolved) }
-  catch (_error) {
-    // An invalid pnpm registry cannot receive a public mirror recommendation.
-    return undefined
-  }
-  if (resolved !== OFFICIAL_NPM_REGISTRY) return undefined
-  return registries.fallbackRegistries.find(registry => registry === NPMMIRROR_REGISTRY)
 }
 
 /** One installation owns acceptance, response recovery, and every cancellation attempt. */
@@ -560,7 +515,6 @@ export class PluginManagerController {
   private inspectAbort: AbortController | undefined
   private request: InstallRequest | undefined
   private noticeSeq = 0
-  private analyticsAttempt: { input: string; started: number } | undefined
   private registryRead: RegistryRead | undefined
   /** A Discover entry chose the dialog's registry; that choice applies to this dialog only and is never remembered. */
   private transientRegistry = false
@@ -613,10 +567,7 @@ export class PluginManagerController {
       configForm: id => this.ctx.configForms.get(id),
       ensure: () => { if (this.getSnapshot().status === 'idle') void this.load() },
       refresh: () => { void this.refresh() },
-      openInstall: () => {
-        this.ctx.get('productAnalytics')?.track('plugin_add_button_click', {})
-        this.openDialog()
-      },
+      openInstall: () => { this.openDialog() },
       installFrom: ({ spec, registry, title, version }) => {
         // A hidden installation reopens as it is; only one installation runs at a time.
         if (!this.openDialog()) return
@@ -630,7 +581,6 @@ export class PluginManagerController {
           void this.cancelInstall()
           return
         }
-        if (this.getSnapshot().install.phase === 'checking') this.finishAnalytics('cancelled')
         this.abortInspect()
         this.registryRead = undefined
         this.patch({ install: IDLE_INSTALL })
@@ -653,20 +603,6 @@ export class PluginManagerController {
         const install = this.getSnapshot().install
         if (install.phase === 'failed') this.patch({ install: { ...specAgain(install), registryOpen: true } })
       },
-      useGithubMirror: () => {
-        const install = this.getSnapshot().install
-        const mirror = githubRecoveryRegistry(install)
-        if (mirror === undefined) return
-        const recovered = { ...specAgain(install), spec: '', mirrorRecovery: true }
-        // A typed address or pnpm's own entry that already asks the mirror stays chosen instead of becoming the offered one.
-        if (asksMirror(install)) {
-          this.patch({ install: recovered })
-          return
-        }
-        const registry: RegistryChoice = { kind: 'offered', registry: mirror }
-        this.registryMemory.set(registry)
-        this.patch({ install: { ...recovered, registry } })
-      },
       approveBuildsAndRetry: () => { void this.approveBuildsAndRetry() },
       cancelInstall: () => { void this.cancelInstall() },
       reconcileInstall: () => { void this.reconcileInstall() },
@@ -682,7 +618,6 @@ export class PluginManagerController {
         void this.run(packageName, { packageName, action: enabled ? 'enable' : 'disable' }, async () => {
           const result = await this.ctx.remote.pluginManager.setBundleEnabled(packageName, enabled)
           this.applied(result, packageName)
-          if (result.ok && (result.value.application === 'applied' || result.value.application === 'restart-required')) this.trackToggle(packageName, enabled)
         })
       },
       update: (packageName) => {
@@ -708,7 +643,6 @@ export class PluginManagerController {
       },
       uninstall: (packageName) => {
         this.pendingConfirm = () => this.run(packageName, { packageName, action: 'uninstall' }, async () => {
-          this.ctx.get('productAnalytics')?.track('confirm_uninstall_plugin', { plugin_name: packageName })
           this.applied(await this.ctx.remote.pluginManager.removeBundle(packageName), packageName)
         })
         this.patch({ confirm: { action: 'uninstall', packageName } })
@@ -719,7 +653,6 @@ export class PluginManagerController {
         void this.run(rowKey(entryId), { packageName: entryId, action: enabled ? 'rowEnable' : 'rowDisable' }, async () => {
           const result = await this.ctx.remote.pluginManager.setPluginEnabled(entryId, enabled)
           this.applied(result, entryId)
-          if (result.ok && (result.value.application === 'applied' || result.value.application === 'restart-required')) this.trackToggle(entryId, enabled, true)
         })
       },
       dismissNotice: () => { this.patch({ notice: null }) },
@@ -784,14 +717,6 @@ export class PluginManagerController {
     const untouched = install.registry === read.choice && (install.phase === 'idle' || install.phase === 'checking')
     if (untouched) read.choice = reconciled(remembered, answer.value)
     this.patchInstall({ registries: answer.value, ...untouched ? { registry: read.choice } : {} })
-    const mirror = eligibleMirror(answer.value)
-    if (!untouched || remembered !== null || mirror === undefined) return
-    const fastest = await this.ctx.remote.pluginRegistryProbe.fastest()
-    const current = this.getSnapshot().install
-    if (!this.currentRegistryRead(read) || !current.open || (current.phase !== 'idle' && current.phase !== 'checking')
-      || current.registry !== read.choice || !fastest.ok || fastest.value !== mirror) return
-    read.choice = { kind: 'offered', registry: mirror }
-    this.patchInstall({ registry: read.choice })
   }
 
   /**
@@ -957,22 +882,16 @@ export class PluginManagerController {
     const install = state.install
     const spec = install.spec.trim()
     if (install.phase === 'checking' || isInstallPending(install.phase) || spec === '') return
-    if (this.ctx.get('productAnalytics')?.enabled) {
-      this.analyticsAttempt = { input: sanitizeInstallInput(spec), started: Date.now() }
-      this.ctx.get('productAnalytics')?.track('plugin_install_click', { input_value: sanitizeInstallInput(spec) })
-    }
     // A name the list already shows is refused at once, before the Host is asked.
     const listed = state.packages.find(pkg => pkg.name === spec)
     const catalogSubject = install.subject?.selection === undefined || install.subject.spec !== spec ? undefined : install.subject
     if (listed !== undefined && listed.availability !== 'missing' && catalogSubject === undefined) {
-      this.finishAnalytics('failed', 'already-installed')
       this.patchInstall({ phase: 'idle', inputError: { problem: listed.availability === 'installation' ? 'shipped' : 'already-installed', reason: spec } })
       return
     }
     const choice = install.registry
     const typed = choice.kind === 'custom' ? choice.url.trim() : undefined
     if (typed !== undefined && !REGISTRY_URL.test(typed)) {
-      this.finishAnalytics('failed', 'invalid-registry')
       this.patchInstall({ phase: 'idle', registryError: true, registryOpen: true })
       return
     }
@@ -1001,13 +920,11 @@ export class PluginManagerController {
     if (this.gone(controller.signal)) return
     this.inspectAbort = undefined
     if (!inspected.ok) {
-      this.finishAnalytics('failed', inspected.error.code)
       this.patchInstall({ phase: 'idle', inputError: { problem: 'unknown', reason: inspected.error.message } })
       return
     }
     if (inspected.value.status === 'refused') {
       const { problem, reason, registries } = inspected.value
-      this.finishAnalytics('failed', problem)
       this.patchInstall({ phase: 'idle', inputError: { problem, reason, ...registries === undefined ? {} : { registries } } })
       return
     }
@@ -1060,14 +977,12 @@ export class PluginManagerController {
       return
     }
     this.request = undefined
-    this.finishAnalytics('unknown')
     this.patchInstall({ phase: 'unknown', failure: null, runs: settledRuns(this.getSnapshot().install.runs, null) })
     this.notifyHiddenInstall('unknown')
     void this.load()
   }
 
   private settleInstall(result: ChangeResult): void {
-    this.finishAnalytics(result.application === 'failed' ? 'failed' : result.application === 'cancelled' ? 'cancelled' : 'success', result.application === 'failed' ? result.error?.code : undefined, result.bundle)
     const { runs, attempts } = this.getSnapshot().install
     this.request = undefined
     // The Host's answer names every registry it asked, whether or not each attempt's announcement arrived.
@@ -1098,7 +1013,6 @@ export class PluginManagerController {
     if (completed.phase === 'done' && completed.subject?.selection !== undefined && result.bundle !== undefined) {
       this.applied({ ok: true, value: result }, result.bundle)
       this.patch({ highlight: result.bundle })
-      if (completed.subject.selection) this.trackToggle(result.bundle, true)
     }
     const phase = this.getSnapshot().install.phase
     if (phase === 'done' || phase === 'failed') this.notifyHiddenInstall(phase)
@@ -1121,7 +1035,6 @@ export class PluginManagerController {
     const install = this.getSnapshot().install
     const pending = install.failure?.pendingBuilds
     if (install.phase !== 'failed' || install.subject === null || pending === undefined || pending.length === 0) return
-    if (this.ctx.get('productAnalytics')?.enabled) this.analyticsAttempt = { input: sanitizeInstallInput(install.subject.spec), started: Date.now() }
     await this.startInstall(install.subject, pending)
   }
 
@@ -1133,7 +1046,6 @@ export class PluginManagerController {
   private async cancelInstall(): Promise<void> {
     const install = this.getSnapshot().install
     if (install.phase === 'checking' || install.phase === 'failed' || install.phase === 'unknown') {
-      if (install.phase === 'checking') this.finishAnalytics('cancelled')
       this.abortInspect()
       this.offerSpecAgain()
       return
@@ -1160,7 +1072,6 @@ export class PluginManagerController {
       return
     }
     if (result.value.status === 'cancelled') {
-      this.finishAnalytics('cancelled')
       this.offerSpecAgain({ kind: 'cancelled', seq: ++this.noticeSeq })
       void this.load()
     } else if (result.value.status === 'too-late') {
@@ -1214,7 +1125,6 @@ export class PluginManagerController {
       if (this.disposed) return
       try {
         this.applied(result, name)
-        if (result.ok && (result.value.application === 'applied' || result.value.application === 'restart-required')) this.trackToggle(name, true)
       } catch (error) {
         this.patch({ notice: failedNotice(error, { packageName: name, action: 'enable' }, ++this.noticeSeq) })
       }
@@ -1269,27 +1179,6 @@ export class PluginManagerController {
       case 'applied':
         return
     }
-  }
-
-  private trackToggle(name: string, enabled: boolean, row = false): void {
-    const bundle = this.getSnapshot().packages.find(pkg => row ? pkg.rows.some(item => item.entryId === name) : pkg.name === name)
-    const pluginName = row ? bundle?.rows.find(item => item.entryId === name)?.moduleName : name
-    if (bundle === undefined || pluginName === undefined) return
-    this.ctx.get('productAnalytics')?.track('plugin_toggle', {
-      plugin_name: pluginName, plugin_type: row ? 'plugin' : 'bundle', is_enabled: enabled, is_builtin: bundle.availability === 'installation',
-    })
-  }
-
-  private finishAnalytics(status: 'success' | 'failed' | 'cancelled' | 'unknown', reason?: string, name?: string): void {
-    const attempt = this.analyticsAttempt
-    this.analyticsAttempt = undefined
-    if (attempt === undefined || this.disposed) return
-    const errorReason = status === 'cancelled' ? 'user_cancelled' : status === 'unknown' ? 'unknown_result' : reason
-    this.ctx.get('productAnalytics')?.track('install_plugin_result', {
-      input_value: attempt.input, is_success: status === 'success',
-      duration: Math.max(0, Date.now() - attempt.started),
-      ...errorReason === undefined ? {} : { error_reason: errorReason }, ...name === undefined ? {} : { plugin_name: name },
-    })
   }
 
   private patch(next: Partial<PluginManagerState>): void {

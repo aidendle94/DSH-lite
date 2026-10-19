@@ -28,8 +28,7 @@ vi.mock('node:fs', async importOriginal => ({
 
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks() })
 
-const environment = { DSH_DESKTOP_APP_ID: 'com.example.test', DSH_DESKTOP_AUTO_UPDATE_ENV: 'test',
-  DOWNLOAD_TEST_ORIGIN: 'https://updates.example.com', DOWNLOAD_TEST_RELEASE_ID: '0123456789abcdef0123456789abcdef',
+const environment = { DSH_DESKTOP_APP_ID: 'com.example.test',
   DSH_DESKTOP_WINDOWS_TOKEN_PIN: 'fixture-pin', DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_CONCURRENCY: '2' }
 
 function supervisor(failure?: string) {
@@ -43,7 +42,7 @@ function supervisor(failure?: string) {
   return { run, stages }
 }
 
-it('requires one signing preflight before building, then records only the complete release', async () => {
+it('requires one signing preflight before building and writes no release record', async () => {
   const { run, stages } = supervisor()
   await packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run)
   expect(stages.slice(0, 2)).toEqual(['preflight:windows-signing', 'run build:official'])
@@ -63,9 +62,7 @@ it('requires one signing preflight before building, then records only the comple
       expect(call[3].env).toHaveProperty('DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_CONCURRENCY', '2')
     }
   }
-  expect(writeFileSync).toHaveBeenCalledOnce()
-  const record = JSON.parse(vi.mocked(writeFileSync).mock.calls[0]![1] as string) as { publicUrl: string }
-  expect(record.publicUrl).toBe('https://updates.example.com/dsh-desk/0123456789abcdef0123456789abcdef/feeds/win-x64/')
+  expect(writeFileSync).not.toHaveBeenCalled()
 })
 
 it('initializes shared storage only after acquiring the preflight stage lock', async () => {
@@ -81,7 +78,7 @@ it('initializes shared storage only after acquiring the preflight stage lock', a
 it.each(['preflight:windows-signing', 'run build:official', 'run sign:primary-runtime', 'run prepare:dsh --defer-runtime-smoke', 'run sign:primary-runtime --dsh',
   'exec tsx scripts/smoke-packaged-runtime.ts',
   'exec electron-builder --config electron-builder.config.mjs --win --x64 --publish never'])
-('never continues or records a release after %s fails', async (failure) => {
+('never continues after %s fails', async (failure) => {
   const { run, stages } = supervisor(failure)
   await expect(packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run)).rejects.toThrow('stage refused')
   expect(stages.at(-1)).toBe(failure)
@@ -102,7 +99,7 @@ it.each(['--unsigned', '--prepare-only'])('keeps %s hardware-free and creates no
   expect(stages.includes('exec tsx scripts/smoke-packaged-runtime.ts --unsigned')).toBe(mode === '--unsigned')
 })
 
-it('checks the assembled macOS runtime before notarizing and recording the release', async () => {
+it('checks the assembled macOS runtime before notarizing', async () => {
   const { run, stages } = supervisor()
   vi.mocked(packageMacOSArtifacts).mockImplementationOnce(async () => {
     expect(stages.at(-1)).toBe('exec tsx scripts/smoke-packaged-runtime.ts')
@@ -110,7 +107,7 @@ it('checks the assembled macOS runtime before notarizing and recording the relea
   })
   await packageTarget(parseDesktopPackageInvocation(['mac-arm64'], 'darwin', 'arm64'), environment, run)
   expect(packageMacOSArtifacts).toHaveBeenCalledOnce()
-  expect(writeFileSync).toHaveBeenCalledOnce()
+  expect(writeFileSync).not.toHaveBeenCalled()
 })
 
 it.each([

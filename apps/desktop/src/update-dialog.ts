@@ -1,9 +1,9 @@
-/** Main-owned update confirmations; closing or replacing a dialog never grants installation permission. */
+/** Main-owned shell dialogs; closing or replacing a dialog selects its cancel response. */
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type MessageBoxOptions, type MessageBoxReturnValue } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 import type { DesktopUpdateOverlays } from './update-overlay.ts'
 
-/** Channels available only to the isolated update-dialog document. */
+/** Channels available only to the isolated shell dialog document. */
 export const UPDATE_DIALOG_IPC = { status: 'dsh-update-dialog:status', changed: 'dsh-update-dialog:changed', respond: 'dsh-update-dialog:respond' } as const
 
 /** Text and choices supplied by the main process, never by product documents. */
@@ -36,7 +36,7 @@ export interface UpdateDialogApi {
 // main.ts's protocol.handle shell route serves this document and its renderer assets; the modal requires that route.
 const page = 'dsh-app://shell/update-dialog.html'
 
-/** One fading backdrop with replaceable confirmation content; aborted checks and mandatory policy cancel ordinary prompts. */
+/** One fading backdrop with replaceable confirmation content; an aborted signal cancels the displayed prompt. */
 export class DesktopUpdateDialog {
   private disposed = false
   private revision = 0
@@ -62,10 +62,10 @@ export class DesktopUpdateDialog {
     ipcMain.handle(UPDATE_DIALOG_IPC.respond, (event, revision: unknown, index: unknown) => {
       this.owned(event)
       const active = this.active
-      if (active === undefined || revision !== active.view.revision) throw new Error('desktop update: stale dialog response')
+      if (active === undefined || revision !== active.view.revision) throw new Error('desktop dialog: stale dialog response')
       if (typeof index !== 'number' || !Number.isInteger(index)
         || (index !== active.view.cancelId && (index < 0 || index >= active.view.buttons.length))) {
-        throw new Error('desktop update: invalid dialog response')
+        throw new Error('desktop dialog: invalid dialog response')
       }
       active.finish(index)
     })
@@ -78,7 +78,7 @@ export class DesktopUpdateDialog {
    */
   show(parent: BrowserWindow, options: UpdateDialogOptions): Promise<MessageBoxReturnValue> {
     const locale = typeof this.locale === 'function' ? this.locale() : this.locale
-    const buttons = options.buttons ?? [locale.messages.updateAcknowledge]
+    const buttons = options.buttons ?? [locale.messages.dialogAcknowledge]
     const cancelId = options.cancelId ?? buttons.length - 1
     if (this.disposed || options.signal?.aborted === true || parent.isDestroyed()) {
       return Promise.resolve({ response: cancelId, checkboxChecked: false })
@@ -88,12 +88,12 @@ export class DesktopUpdateDialog {
     clearTimeout(this.closing)
     this.closing = undefined
     const existing = this.window
-    const window = existing ?? this.overlays.create(parent, this.preload, options.title ?? locale.messages.updateTitle, false)
+    const window = existing ?? this.overlays.create(parent, this.preload, options.title ?? locale.messages.aboutProduct, false)
     this.window = window
     this.parent = parent
     const view: UpdateDialogView = { revision: ++this.revision, locale: locale.id, title: options.title ?? '', message: options.message,
-      detail: options.detail ?? '', buttons, cancelId, closeLabel: locale.messages.updateClose,
-      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.updateTechnicalDetails }
+      detail: options.detail ?? '', buttons, cancelId, closeLabel: locale.messages.dialogClose,
+      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.dialogTechnicalDetails }
     return new Promise((resolve) => {
       const abort = (): void => { finish(cancelId) }
       const finish = (response: number, retain = false): void => {
@@ -147,7 +147,7 @@ export class DesktopUpdateDialog {
     const window = this.window
     if (window === undefined || event.sender !== window.webContents
       || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== page) {
-      throw new Error('desktop update: rejected unowned dialog renderer')
+      throw new Error('desktop dialog: rejected unowned dialog renderer')
     }
   }
 }

@@ -2,10 +2,9 @@
 import { afterEach, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmError } from '@deepseek-ai/dsh-llm'
-import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { DeepSeekAdapter, registerDeepSeekProvider, resolveAdapterOptions } from '../src/index.ts'
 import type { DeepSeekAdapterOptions, DeepSeekCatalogModel } from '../src/index.ts'
-import { options as request, prepareExtensions } from './helpers.ts'
+import { options as request } from './helpers.ts'
 
 const contexts: Context[] = []
 afterEach(async () => {
@@ -60,8 +59,6 @@ it('refuses a model on a direct adapter stream', () => {
   const adapter = new DeepSeekAdapter({
     options: () => endpoint(),
     resolveAuth: () => Promise.resolve({ headers: {} }),
-    resolveUserId: () => 'fixture-user' as AnonymousUserId,
-    prepareExtensions,
     admit: () => { throw new LlmError('blocked by fixture', 'MODEL_UNSUPPORTED') },
   })
   expect(() => adapter.stream(request({ provider: 'fixture-route', model: 'blocked' }))).toThrow(/blocked by fixture/)

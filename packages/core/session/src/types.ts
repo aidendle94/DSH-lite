@@ -426,6 +426,53 @@ export interface SessionEventMap {
    * so tolerating concurrent writers needs a signal beyond the log.
    */
   'session/end-seed': { inherited?: true }
+  /**
+   * Legacy upstream marker: the DeepSeek Harness session-log uploader recorded
+   * that the official API accepted a delivery through `throughSeq`. DSH-lite
+   * never writes it; the declaration keeps logs written by upstream builds
+   * readable, and no consumer interprets it.
+   */
+  'session-log-deepseek/delivery-accepted': {
+    /** Session identity the accepted delivery carried; inherited fork markers retain the parent's id. */
+    sessionId: SessionId
+    /** Accepted Session format generation; absence identifies version 0. */
+    sessionFormatVersion?: number
+    /** Last canonical event included in the accepted request. */
+    throughSeq: SessionSeq
+  }
+  /**
+   * Legacy upstream record of one auxiliary DeepSeek web-search request.
+   * DSH-lite never writes it; the declaration keeps logs written by upstream
+   * builds readable, and no consumer interprets it.
+   */
+  'web/deepseek-search-llm-request': UpstreamDeepSeekSearchLlmRequest
+}
+
+/** Secret-free DeepSeek Messages request recorded by upstream builds before one auxiliary search dispatch. */
+export interface UpstreamDeepSeekSearchLlmRequest {
+  /** Fully resolved Messages endpoint. */
+  readonly endpoint: string
+  /** `anthropic-version` header value. */
+  readonly apiVersion: string
+  /** Exact JSON body sent to the provider. */
+  readonly body: {
+    readonly model: string
+    readonly max_tokens: number
+    readonly messages: readonly [{
+      readonly role: 'user'
+      readonly content: readonly [{
+        readonly type: 'text'
+        readonly text: string
+      }]
+    }]
+    readonly tools: readonly [{
+      readonly type: 'web_search_20250305'
+      readonly name: 'web_search'
+      readonly max_uses: number
+    }]
+    /** Thinking mode for the auxiliary turn; absent means the request omitted the field. */
+    readonly thinking?: { readonly type: 'disabled' }
+  }
 }
 
 /** The appendable event-type keys of {@link SessionEventMap}, plugin-merged extensions included. */

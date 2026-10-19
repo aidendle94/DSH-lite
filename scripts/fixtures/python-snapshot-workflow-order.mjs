@@ -10,8 +10,8 @@ export function apply(ctx, config) {
   const pending = new Map()
   let disposed = false
   let directResultSeq
-  let directStep = false
-  let directDelivered = false
+  let directStep
+  let directSettled = false
 
   ctx.effect(() => async () => {
     disposed = true
@@ -29,11 +29,13 @@ export function apply(ctx, config) {
     if (config.direct === undefined) return
     if (event.type === 'tool/result' && event.data.message.source.callId === config.direct.callId) directResultSeq = event.seq
     if (directResultSeq === undefined) return
-    if (event.type === 'step/start') directStep = true
-    if (event.type === 'session-log-deepseek/delivery-accepted' && event.data.throughSeq >= directResultSeq) {
-      directDelivered = true
+    // The parent's next model step, settled or attempted, has consumed the direct result.
+    if (event.type === 'step/start' && directStep === undefined) directStep = { turn: event.data.turn, step: event.data.step }
+    if (directStep !== undefined && (event.type === 'assistant/message' || event.type === 'assistant/attempt')
+      && event.data.turn === directStep.turn && event.data.step === directStep.step) {
+      directSettled = true
     }
-    if (directStep && directDelivered) {
+    if (directSettled) {
       for (const wait of pending.values()) if (wait.direct) wait.resolve()
     }
   })
@@ -46,7 +48,7 @@ export function apply(ctx, config) {
     }
     signal.throwIfAborted()
     if (disposed) throw new Error('workflow snapshot barrier disposed')
-    if (direct ? !directStep || !directDelivered : !started.has(agent.id)) {
+    if (direct ? !directSettled : !started.has(agent.id)) {
       const wait = { ...Promise.withResolvers(), direct }
       const abort = () => { wait.reject(signal.reason) }
       signal.addEventListener('abort', abort, { once: true })

@@ -35,6 +35,9 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
+
+/** A two-origin deployment; the shipped default has Hugging Face alone. */
+const ORIGINS = ['https://huggingface.co', 'https://mirror.hf.example']
 it('restores verified cached models on every provider activation without downloads or a worker', async () => {
   const { root, fetcher } = await fixture(), config = Config({ dataRoot: root })
   await prepareRuntime(new Context(), config, new AbortController().signal)
@@ -147,12 +150,12 @@ it('rejects cached files changed before the final verification stage', async () 
 it('downloads missing assets from the first responsive mirror and reuses verified files without probes', async () => {
   const { root, fetcher } = await fixture()
   fetcher.mockImplementation(async (url, init) => init?.method === 'HEAD'
-    ? new Response(null, { status: url.startsWith('https://hf-mirror.com/') ? 200 : 503 }) : new Response(bytes))
-  const config = Config({ dataRoot: root })
+    ? new Response(null, { status: url.startsWith('https://mirror.hf.example/') ? 200 : 503 }) : new Response(bytes))
+  const config = Config({ dataRoot: root, modelOrigins: ORIGINS })
   await prepareRuntime(new Context(), config, new AbortController().signal)
   const downloads = fetcher.mock.calls.filter(([, init]) => init?.method !== 'HEAD').map(([url]) => url)
   expect(downloads).toEqual(['model.int8.onnx', 'tokens.txt', 'silero_vad.onnx']
-    .map(name => `https://hf-mirror.com/owner/model/resolve/revision/${name}`))
+    .map(name => `https://mirror.hf.example/owner/model/resolve/revision/${name}`))
   fetcher.mockClear()
   await prepareRuntime(new Context(), config, new AbortController().signal)
   expect(fetcher).not.toHaveBeenCalled()
@@ -161,25 +164,26 @@ it('downloads missing assets from the first responsive mirror and reuses verifie
 it.each(['http', 'network', 'integrity'] as const)('falls back after a %s failure without accepting unverified bytes', async (reason) => {
   const { root, fetcher } = await fixture()
   fetcher.mockImplementation(async (url, init) => {
-    const mirror = url.startsWith('https://hf-mirror.com/')
+    const mirror = url.startsWith('https://mirror.hf.example/')
     if (init?.method === 'HEAD') return new Response(null, { status: mirror ? 200 : 503 })
     if (!mirror) return new Response(bytes)
     if (reason === 'network') throw new TypeError('fetch failed')
     return reason === 'http' ? new Response('unavailable', { status: 503 }) : new Response('corrupt')
   })
-  const paths = await prepareRuntime(new Context(), Config({ dataRoot: root }), new AbortController().signal)
+  const paths = await prepareRuntime(new Context(), Config({ dataRoot: root, modelOrigins: ORIGINS }), new AbortController().signal)
   expect(await readFile(paths.model)).toEqual(bytes)
   const downloads = fetcher.mock.calls.filter(([, init]) => init?.method !== 'HEAD').map(([url]) => new URL(url).origin)
-  expect(downloads).toEqual(['https://hf-mirror.com', 'https://huggingface.co',
-    'https://hf-mirror.com', 'https://huggingface.co', 'https://hf-mirror.com', 'https://huggingface.co'])
+  expect(downloads).toEqual(['https://mirror.hf.example', 'https://huggingface.co',
+    'https://mirror.hf.example', 'https://huggingface.co', 'https://mirror.hf.example', 'https://huggingface.co'])
 })
 
 it.each(['EACCES', 'unclassified'])('does not switch sources for a local publication failure (%s)', async (code) => {
   const { root, fetcher } = await fixture()
   vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error('cannot publish'), { code }))
-  await expect(prepareRuntime(new Context(), Config({ dataRoot: root }), new AbortController().signal)).rejects.toMatchObject({
-    download: { reason: code === 'EACCES' ? 'storage' : 'unknown' },
-  })
+  await expect(prepareRuntime(new Context(), Config({ dataRoot: root, modelOrigins: ORIGINS }), new AbortController().signal))
+    .rejects.toMatchObject({
+      download: { reason: code === 'EACCES' ? 'storage' : 'unknown' },
+    })
   expect(fetcher.mock.calls.filter(([, init]) => init?.method !== 'HEAD')).toHaveLength(1)
 })
 
@@ -189,15 +193,16 @@ it('does not switch sources after cancellation during a download', async () => {
     if (init?.method === 'HEAD') return new Response(null)
     abort.abort(reason); throw reason
   })
-  await expect(prepareRuntime(new Context(), Config({ dataRoot: root }), abort.signal)).rejects.toBe(reason)
+  await expect(prepareRuntime(new Context(), Config({ dataRoot: root, modelOrigins: ORIGINS }), abort.signal)).rejects.toBe(reason)
   expect(fetcher.mock.calls.filter(([, init]) => init?.method !== 'HEAD')).toHaveLength(1)
 })
 
 it('reports the final source when every download fails', async () => {
   const { root, fetcher } = await fixture()
   fetcher.mockResolvedValue(new Response(null, { status: 503 }))
-  await expect(prepareRuntime(new Context(), Config({ dataRoot: root }), new AbortController().signal)).rejects.toMatchObject({
-    download: { source: 'https://hf-mirror.com', reason: 'http', status: 503 },
-  })
+  await expect(prepareRuntime(new Context(), Config({ dataRoot: root, modelOrigins: ORIGINS }), new AbortController().signal))
+    .rejects.toMatchObject({
+      download: { source: 'https://mirror.hf.example', reason: 'http', status: 503 },
+    })
   expect(fetcher.mock.calls.filter(([, init]) => init?.method !== 'HEAD')).toHaveLength(2)
 })

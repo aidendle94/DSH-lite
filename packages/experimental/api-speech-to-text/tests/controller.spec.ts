@@ -43,14 +43,14 @@ it('forwards an explicit download source to the registered preparation owner', a
   const ctx = new Context(); roots.push(ctx)
   const speech = new SpeechToText(ctx, SpeechToText.Config({ defaultProvider: id }))
   const prepare = vi.fn()
-  speech.register({ info: { id, name: 'local', location: 'host-local', languages: ['auto'], downloadSources: ['https://hf-mirror.com'] },
+  speech.register({ info: { id, name: 'local', location: 'host-local', languages: ['auto'], downloadSources: ['https://mirror.hf.example'] },
     preparation: { snapshot: () => ({ phase: 'unprepared' }), subscribe: () => () => {}, prepare, cancel: async () => {} },
     transcribe: async () => ({ text: '', audioSeconds: 0, inferenceSeconds: 0 }),
   })
   const api = new SpeechController(ctx, { maxAudioBytes: 32044, maxDurationSeconds: 1 })
-  expect(api.catalog().providers[0]?.downloadSources).toEqual(['https://hf-mirror.com'])
-  api.prepare(id, { downloadSource: 'https://hf-mirror.com' })
-  expect(prepare).toHaveBeenCalledWith({ downloadSource: 'https://hf-mirror.com' })
+  expect(api.catalog().providers[0]?.downloadSources).toEqual(['https://mirror.hf.example'])
+  api.prepare(id, { downloadSource: 'https://mirror.hf.example' })
+  expect(prepare).toHaveBeenCalledWith({ downloadSource: 'https://mirror.hf.example' })
 })
 
 it('rejects oversized, noncanonical, malformed and overlong audio without inference', async () => {

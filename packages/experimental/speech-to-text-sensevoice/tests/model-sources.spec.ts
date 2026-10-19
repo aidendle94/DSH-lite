@@ -2,7 +2,7 @@
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import { orderModelSources } from '../src/model-sources.ts'
 
-const origins = ['https://huggingface.co', 'https://hf-mirror.com'] as const
+const origins = ['https://huggingface.co', 'https://mirror.hf.example'] as const
 const path = '/owner/model/resolve/pinned/model.onnx'
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 

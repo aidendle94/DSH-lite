@@ -5,12 +5,12 @@
   - paragraph: 版本 2.0.0
   - button "收起安装详情" [expanded]
   - paragraph: 安装位置：{{cwd}}/.dsh-home/profiles/scaffold
-  - paragraph: 第 1 次 · 中国大陆镜像源
+  - paragraph: 第 1 次 · registry.mirror.example
   - text: 失败 $
-  - group "命令第 1 行": pnpm add mirrored-package --registry=https://registry.npmmirror.com/
+  - group "命令第 1 行": pnpm add mirrored-package --registry=https://registry.mirror.example/
   - text: 退出码 1
   - button "复制"
-  - text: "ERR_PNPM_META_FETCH_FAIL GET https://registry.npmmirror.com/mirrored-package: socket hang up"
+  - text: "ERR_PNPM_META_FETCH_FAIL GET https://registry.mirror.example/mirrored-package: socket hang up"
   - paragraph: 第 2 次 · npm 官方源
   - text: 已完成 $ pnpm add mirrored-package
   - button "复制"

@@ -917,8 +917,8 @@ it('settles inherited CLI descriptors without requiring captured streams', async
 it('reads the registry pnpm\'s own configuration names in the profile, and answers null for anything but a URL', async () => {
   const { dir } = fixture()
   const answer = (value: object) => command.run.mockResolvedValueOnce(value as never)
-  answer({ exitCode: 0, stdout: 'https://registry.npmmirror.com/\n', stderr: '' })
-  expect(await readProfileRegistry(dir, { timeoutMs: 5 })).toBe('https://registry.npmmirror.com/')
+  answer({ exitCode: 0, stdout: 'https://mirror.registry.example/\n', stderr: '' })
+  expect(await readProfileRegistry(dir, { timeoutMs: 5 })).toBe('https://mirror.registry.example/')
   expect(command.run).toHaveBeenLastCalledWith('pnpm', ['config', 'get', 'registry'], expect.objectContaining({ cwd: dir, timeout: 5, reject: false, stdin: 'ignore' }))
   // Output pnpm prefixes with a notice keeps its last line; a failed or empty answer, or one that is no URL, reads as unknown.
   answer({ exitCode: 0, stdout: 'WARN  something\nhttps://npm.corp.example/', stderr: '' })
@@ -942,8 +942,8 @@ it('asks the registry through pnpm view in the profile directory, without pnpm\'
   expect((command.run.mock.lastCall as unknown[])[2]).not.toHaveProperty('cancelSignal')
   // A registry asked by URL goes on the command line; null leaves the choice to pnpm's own configuration.
   answer({ exitCode: 0, stdout: '{"name":"x"}', stderr: '', timedOut: false, isCanceled: false })
-  await viewProfilePackage(dir, 'x', { timeoutMs: 5, registry: 'https://registry.npmmirror.com/' })
-  expect((command.run.mock.lastCall as unknown[])[1]).toEqual(['view', 'x', 'name', 'version', 'description', 'dsh', '--json', '--registry=https://registry.npmmirror.com/', '--config.fetch-retries=0'])
+  await viewProfilePackage(dir, 'x', { timeoutMs: 5, registry: 'https://mirror.registry.example/' })
+  expect((command.run.mock.lastCall as unknown[])[1]).toEqual(['view', 'x', 'name', 'version', 'description', 'dsh', '--json', '--registry=https://mirror.registry.example/', '--config.fetch-retries=0'])
   answer({ exitCode: 0, stdout: '{"name":"x"}', stderr: '', timedOut: false, isCanceled: false })
   await viewProfilePackage(dir, 'x', { timeoutMs: 5, registry: null })
   expect((command.run.mock.lastCall as unknown[])[1]).toEqual(['view', 'x', 'name', 'version', 'description', 'dsh', '--json', '--config.fetch-retries=0'])

@@ -4,18 +4,18 @@ import { describe, expect, it } from 'vitest'
 import { parseInstallSpec } from '../src/install-spec.ts'
 import { attributeFailure, normalizeRegistry, OFFICIAL_NPM_REGISTRY, registryPlan, REGISTRY_URL } from '../src/registry.ts'
 
-const MIRROR = 'https://registry.npmmirror.com/'
+const MIRROR = 'https://mirror.registry.example/'
 const CORP = 'https://npm.corp.example/'
 
 describe('normalizeRegistry', () => {
   it('parses an http(s) URL into pnpm\'s comparison form: lower-case host, trailing slash', () => {
-    expect(normalizeRegistry('https://REGISTRY.npmmirror.com')).toBe(MIRROR)
+    expect(normalizeRegistry('https://MIRROR.registry.example')).toBe(MIRROR)
     expect(normalizeRegistry('http://npm.corp.example:4873/prefix')).toBe('http://npm.corp.example:4873/prefix/')
     expect(normalizeRegistry(MIRROR)).toBe(MIRROR)
   })
 
   it('refuses anything but an http(s) URL, as REGISTRY_URL does', () => {
-    for (const url of ['registry.npmmirror.com', 'ftp://x/', 'file:///tmp', '', 'https://']) {
+    for (const url of ['mirror.registry.example', 'ftp://x/', 'file:///tmp', '', 'https://']) {
       expect(() => normalizeRegistry(url), url).toThrow(/http\(s\) URL/)
       expect(REGISTRY_URL.test(url), url).toBe(false)
     }
@@ -34,7 +34,7 @@ describe('registryPlan', () => {
 
   it('moves a requested registry to the front when it is one of the configured set', () => {
     expect(registryPlan(MIRROR, shipped)).toEqual([MIRROR, null])
-    expect(registryPlan('https://REGISTRY.npmmirror.com', shipped)).toEqual([MIRROR, null])
+    expect(registryPlan('https://MIRROR.registry.example', shipped)).toEqual([MIRROR, null])
     expect(registryPlan(null, { registry: MIRROR, fallbackRegistries: [], resolved: OFFICIAL_NPM_REGISTRY })).toEqual([null])
   })
 

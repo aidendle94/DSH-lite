@@ -8,16 +8,11 @@ import type { FailedAction, ManagerNotice, PackageRow, PackageView, PluginManage
 /** The translate seat of the manager's dictionary. */
 export type Translate = PropsLocale<'pluginManager'>['t']
 
-/** The registries with a name of their own, by host. */
-const REGISTRY_COPY = new Map<string, PluginManagerLocaleKey>([
-  ['registry.npmmirror.com', 'registryNpmmirror'],
-])
-
 /** npm's own registry, which reads by name rather than by host. */
 const OFFICIAL_NPM_HOST = 'registry.npmjs.org'
 
 /**
- * What a registry reads as: npm's own by its name, a known mirror by its name, any other registry by its host;
+ * What a registry reads as: npm's own by its name, any other registry by its host;
  * and the host each names, for where the name alone would leave it unsaid. The registry pnpm's own configuration
  * names reads by the registry it names, so the label never claims npm's own for another one.
  * @param registry - the registry, null for the one pnpm's own configuration names.
@@ -30,8 +25,7 @@ export function registryText(registry: Registry, t: Translate, resolved: string 
   // A configuration the Host could not read names no registry: the entry keeps the neutral default name.
   if (url === null) return { name: t('registryDefault'), host: OFFICIAL_NPM_HOST }
   const host = registryHost(url)
-  const key = host === OFFICIAL_NPM_HOST ? 'registryOfficial' : REGISTRY_COPY.get(host)
-  return { name: key === undefined ? host : t(key), host }
+  return { name: host === OFFICIAL_NPM_HOST ? t('registryOfficial') : host, host }
 }
 
 /** The host of a registry URL; the URL as written when it does not parse. */

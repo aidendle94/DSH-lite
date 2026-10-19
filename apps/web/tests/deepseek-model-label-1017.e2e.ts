@@ -1,4 +1,4 @@
-/** The shipped browser plugin decorates both DeepSeek routes without changing catalog identity. */
+/** The shipped browser plugin decorates the DeepSeek route without changing catalog identity. */
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -20,11 +20,10 @@ describe.skipIf(MODE === 'record')('web e2e: temporary DeepSeek release badge', 
 
   beforeAll(async () => {
     scaffold = await launchWebScaffold({
-      extraOverlayPath: fileURLToPath(new URL('./fixtures/deepseek-model-label-1017/account.overlay.yml', import.meta.url)),
+      extraOverlayPath: fileURLToPath(new URL('./fixtures/deepseek-model-label-1017/default-model.overlay.yml', import.meta.url)),
       replayFixture: FIXTURE,
       replayProvidersOnly: true,
       replayProviders: [
-        { id: 'deepseek-account', name: 'DeepSeek Account', models: [{ id: 'deepseek-flash', name: NAME }] },
         { id: 'deepseek-official', name: 'DeepSeek', models: [
           { id: 'deepseek-flash', name: NAME }, { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
         ] },
@@ -55,14 +54,14 @@ describe.skipIf(MODE === 'record')('web e2e: temporary DeepSeek release badge', 
       await current.click()
       const menu = page.getByRole('menu', { name: '模型', exact: true })
       await compareOrRefreshGolden(EXPECTED, await captureStableAria(page, '[role="menu"][aria-label="模型"]', scaffold.workspaceCwd), MODE)
-      expect(await menu.getByText('1017', { exact: true }).count()).toBe(2)
+      expect(await menu.getByText('1017', { exact: true }).count()).toBe(1)
       expect(await menu.getByRole('group', { name: 'External', exact: true }).getByText('1017', { exact: true }).count()).toBe(0)
-      const account = menu.getByRole('group', { name: 'DeepSeek 账号', exact: true })
-      await account.getByRole('menuitemradio', { name: `${NAME} 1017`, exact: true }).click()
-      await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'deepseek-account', model: 'deepseek-flash' })
+      const official = menu.getByRole('group', { name: 'DeepSeek', exact: true })
+      await official.getByRole('menuitemradio', { name: `${NAME} 1017`, exact: true }).click()
+      await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'deepseek-official', model: 'deepseek-flash' })
       await expect.poll(() => trigger.textContent()).toContain(`${NAME} 1017`)
-      const catalog = await scaffold.ctx.llm.listModels('deepseek-account')
-      expect(catalog.map(model => ({ id: model.id, name: model.name }))).toEqual([{ id: 'deepseek-flash', name: NAME }])
+      const catalog = await scaffold.ctx.llm.listModels('deepseek-official')
+      expect(catalog.map(model => ({ id: model.id, name: model.name }))).toContainEqual({ id: 'deepseek-flash', name: NAME })
     } finally {
       await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
@@ -76,7 +75,7 @@ describe.skipIf(MODE === 'record')('web e2e: temporary DeepSeek release badge', 
       await trigger.click()
       await page.getByRole('menuitem', { name: /^模型/ }).click()
       const menu = page.getByRole('menu', { name: '模型', exact: true })
-      const badge = menu.getByRole('group', { name: 'DeepSeek 账号', exact: true }).getByText('1017', { exact: true })
+      const badge = menu.getByRole('group', { name: 'DeepSeek', exact: true }).getByText('1017', { exact: true })
       const box = await badge.boundingBox()
       expect(box).not.toBeNull()
       expect(box!.x).toBeGreaterThanOrEqual(12)

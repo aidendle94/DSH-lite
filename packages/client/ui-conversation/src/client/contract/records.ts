@@ -139,9 +139,8 @@ export interface TurnErrorNode {
   /** Sanitized provider message; empty when a known code owns localized copy. */
   message: string
   /**
-   * Stable provider failure code when recorded, or a Client display code:
-   * `ACCOUNT_SIGNED_OUT` for a sign-out cancellation, `INTERRUPTED` for a
-   * turn closed after DSH stopped.
+   * Stable provider failure code when recorded, or the Client display code
+   * `INTERRUPTED` for a turn closed after DSH stopped.
    */
   code?: string
 }
